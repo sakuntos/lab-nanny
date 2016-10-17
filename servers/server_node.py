@@ -1,18 +1,21 @@
-""" This script
+""" Simple slave server.
+
+Starts a tornado web server that establishes a websocket connection in the port SOCKETPORT with the name SOCKETNAME.
+It contains a simple bi-directional protocol:
+- "on_message" sends data TO the arduino, whenever a client sends a message.
+- "send_data" is called periodically, and it obtains data FROM arduino and sends it TO the clients.
+
 """
 
 import time
 import json
 import datetime
-import SerialCommManager as SDF
+import SerialCommManager as SCM
 import socket
 from serial.serialutil import SerialException
 from tornado import websocket, web, ioloop
 from SerialCommManager import write_handshake
 
-
-paymentTypes = ["cash", "tab", "visa","mastercard","bitcoin"]
-namesArray = ['Ben', 'Jarrod', 'Vijay', 'Aziz']
 SOCKETNAME = r'/ArduMon1'
 SOCKETNAME2 = r'/ArduMon2'
 SOCKETPORT = 8001
@@ -24,7 +27,7 @@ class WebSocketHandler(websocket.WebSocketHandler):
     #on open of this socket
     def open(self):
         print 'Connection established.'
-        self.data_fetcher= SDF.SerialCommManager(0.01, verbose=False)
+        self.data_fetcher= SCM.SerialCommManager(0.01, verbose=False)
         print 'Data fetcher setup'
         #ioloop to wait for 3 seconds before starting to send data
         ioloop.IOLoop.instance().add_timeout(datetime.timedelta(seconds=3), self.send_data)
@@ -86,6 +89,7 @@ if __name__ == "__main__":
     print "Starting websocket server program. Awaiting client requests to open websocket ..."
     application1 = web.Application([(SOCKETNAME, WebSocketHandler)])
     application1.listen(SOCKETPORT)
+    #To start another websocket, to test parallelism
     #application2 = web.Application([(SOCKETNAME2, WebSocketHandler)])
     #application2.listen(SOCKETPORT2)
     print 'Websocket established in {}:{}/{}'.format(socket.gethostbyname(socket.gethostname()),
