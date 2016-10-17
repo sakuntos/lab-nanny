@@ -1,7 +1,7 @@
 """
 Animate live:
 
-Plotting utility for SerialDataFetcher.
+Plotting utility for SerialCommManager.
 
 
 The fast plotting is done by only updating the changing parts of the plot
@@ -9,7 +9,7 @@ The fast plotting is done by only updating the changing parts of the plot
 Author: David Paredes
 2016
 """
-import SerialCommManager as SDF
+import SerialCommManager as SCM
 import matplotlib.pyplot as plt
 import numpy as np
 import time
@@ -23,7 +23,7 @@ class AnimationPlot:
     """
     def __init__(self, maxLen=1000,number_of_queues=8):
         # open serial port
-        self.plotter = SDF.SerialCommManager(0.01, verbose=False)
+        self.plotter = SCM.SerialCommManager(0.01, verbose=False)
         self.number_of_queues = number_of_queues
         self.y_buffers = [deque([0.0]*maxLen) for element in range(self.number_of_queues)]
         self.ax = deque([0.0]*maxLen)

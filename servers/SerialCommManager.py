@@ -1,6 +1,11 @@
 """
 lab-nanny's slave server interface to the arduino
 
+It can perform two types of handshake:
+- Standard: just collect data
+- Write: it sends a "command" back to arduino. In the simple case of the arduino_firmware_io, it is a byte with a value
+ near 65 ('A'), which turns ON/OFF a digital channel.
+
 Author: David Paredes
 19/05/2015
 """
