@@ -4,7 +4,7 @@ System to monitor signals from different labs and shares/acts on them remotelyâ€
 
 The system consists on one or more [arduinos](https://www.arduino.cc/), each of them connected via USB to a PC (it could be a Raspberry PI), which are later connected to the network. Each of these (arduino+PC) *nodes* are then connected to a central server which different clients/users can connect to.
 
-![System diagram](../resources/architecture_diagram.png "System diagram")
+![System diagram](./resources/architecture_diagram.png "System diagram")
 
 ## Nodes
 Each of the nodes consists of a bunch of channels connected to the arduino, plus a *slave* computer which communicates with both the arduino and the *master* server. 
