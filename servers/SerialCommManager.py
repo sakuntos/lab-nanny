@@ -53,20 +53,34 @@ class SerialCommManager:
     and should also be in the arduino_firmware directory
 
     """
-    def __init__(self,recording_time=1.,verbose=True,):
+    def __init__(self,recording_time=1.,verbose=True,emulatedPort=[]):
         self.recording_time = recording_time
         self.verbose = verbose
         self.time_axis = None
 
         # Obtain the id of the first port to use "arduino" as ID.
-        port = self.get_arduino_port()
-        self.connection_settings= {
-            'port':port,
-            'baudrate':115200,
-            'parity':serial.PARITY_NONE,
-            'stopbits':serial.STOPBITS_ONE,
-            'bytesize':serial.EIGHTBITS,
-            'timeout':self.recording_time}
+        if emulatedPort:
+            port=emulatedPort
+            self.connection_settings={
+                'port':port,
+                'baudrate':115200,
+                'rtscts':True,
+                'dsrdtr':True,
+                'bytesize':serial.EIGHTBITS,
+                'stopbits':serial.STOPBITS_ONE,
+                'parity':serial.PARITY_NONE,
+                'timeout':self.recording_time}
+            
+        else:
+            port = self.get_arduino_port()
+            self.connection_settings= {
+                'port':port,
+                'baudrate':115200,
+                'parity':serial.PARITY_NONE,
+                'stopbits':serial.STOPBITS_ONE,
+                'bytesize':serial.EIGHTBITS,
+                'timeout':self.recording_time}
+        
 
     def get_arduino_port(self):
         myPort_generator = port_grep('arduino')
@@ -94,6 +108,7 @@ class SerialCommManager:
         handshake_func(self.ser,verbose=self.verbose,**args)
         #get data
         data = self.ser.readline()
+        print 'data', data
 
         ##PROCESS
         et = time.clock() - st
