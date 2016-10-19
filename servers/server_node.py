@@ -131,6 +131,7 @@ class WebSocketHandler(websocket.WebSocketHandler):
 
 if __name__ == "__main__":
 
+    #Starting web server
     Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
     httpd = SocketServer.TCPServer(("", PORT), Handler)
     print "serving at port", PORT
