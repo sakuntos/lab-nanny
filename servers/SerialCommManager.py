@@ -80,7 +80,6 @@ class SerialCommManager:
                 'stopbits':serial.STOPBITS_ONE,
                 'bytesize':serial.EIGHTBITS,
                 'timeout':self.recording_time}
-        
 
     def get_arduino_port(self):
         myPort_generator = port_grep('arduino')

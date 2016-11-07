@@ -11,7 +11,8 @@ import time
 import json
 import datetime
 import SerialCommManager as SDF
-from arduino_emulator import ArduinoSerialEmulator
+#Uncomment if arduino_emulator is needed
+#from arduino_emulator import ArduinoSerialEmulator
 
 import socket
 from serial.serialutil import SerialException
@@ -45,13 +46,14 @@ class WebSocketHandler(websocket.WebSocketHandler):
         emulation_port=[]
         
         print 'Connection established.'
-        self.verbose = False
+        self.verbose = True
         
         self.data_fetcher= SDF.SerialCommManager(0.01, verbose=self.verbose,
                                                  emulatedPort=emulation_port)
+
         print 'Data fetcher setup'
         ## Set up a periodic call to self.send_data, with a periodicity in miliseconds
-        self.callback = ioloop.PeriodicCallback(self.send_data,100)
+        self.callback = ioloop.PeriodicCallback(self.send_data,200)
         self.callback.start()
 
  #close connection
@@ -92,6 +94,7 @@ class WebSocketHandler(websocket.WebSocketHandler):
         It is typically called as part of a periodic callback.
         """
         try:
+            time.sleep(1)
             t, channels = self.data_fetcher.poll_arduino()
             print "Data acquired"
             #create a bunch of random data for various dimensions we want
