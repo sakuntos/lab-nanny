@@ -14,7 +14,7 @@ import time
 import serial
 import numpy as np
 from serial.tools.list_ports import grep as port_grep
-
+import logging
 NUM_CHANNELS = 9 # number of total channels (time axis + ADC channels 0-7)
 DATA_LEN = 1 # numbers in each array that serial.print does in arduino
 
@@ -28,7 +28,7 @@ def standard_handshake(serialinst,verbose=False):
     byte_back = serialinst.readline()
     et = time.clock()
     if verbose:
-        print '(std) Received handshake data from serial port: ',byte_back
+        print '(std) Received handshake data from serial port: {}'.format(byte_back)
         print '(std)Time between send and receive: ',et-st
 
 def write_handshake(serialinst,verbose=False,command='A'):
@@ -41,8 +41,8 @@ def write_handshake(serialinst,verbose=False,command='A'):
     byte_back = serialinst.readline()
     et = time.clock()
     if verbose:
-        print 'Received handshake data from serial port: ',byte_back
-        print 'Time between send and receive: ',et-st
+        print '(handshake)Received handshake data from serial port: ',byte_back
+        print '(handshake)Time between send and receive: ',et-st
 
 
 class SerialCommManager:
@@ -70,7 +70,7 @@ class SerialCommManager:
                 'stopbits':serial.STOPBITS_ONE,
                 'parity':serial.PARITY_NONE,
                 'timeout':self.recording_time}
-            
+
         else:
             port = self.get_arduino_port()
             self.connection_settings= {
@@ -107,16 +107,16 @@ class SerialCommManager:
         handshake_func(self.ser,verbose=self.verbose,**args)
         #get data
         data = self.ser.readline()
-        print 'data', data
+        self.ser.close()
 
         ##PROCESS
         et = time.clock() - st
         if self.verbose:
-            print 'Elapsed time reading data (s): ', et
+            print '------------------------\n INIT POLLING ARDUINO:\n------------------------'
+            print 'Time reading data (s): {0:.2e},  data: {1}'.format(et,data)
 
         #make string into list of strings, comma separated
         data_list = data.split(',')
-
         # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
         data_array = np.array([float(i) for i in data_list[:-1]])
 
@@ -129,7 +129,7 @@ class SerialCommManager:
             self.time_axis = data_array_3d[0]
             self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
         if self.verbose:
-            print 'Data acquisition complete. Time spent {}'.format( time.clock() - st)
+            print 'Data acquisition complete. Time spent {0:.2e}'.format( time.clock() - st)
 
         return self.time_axis, [channel for channel in self.channels]
 
@@ -142,7 +142,7 @@ class SerialCommManager:
         self.ser = serial.Serial(**self.connection_settings)
         # self.ser = serial.Serial(
         #     port ='/dev/cu.usbmodemfa131',
-        #     #port='COM4',
+        #     #port='COM6',   #look in the arduino software
         #     baudrate=115200,
         #     parity=serial.PARITY_NONE,
         #     stopbits=serial.STOPBITS_ONE,
@@ -158,12 +158,11 @@ class SerialCommManager:
 
 def main():
     fetcher = SerialCommManager(0.01, verbose=False)
-#    dataList = fetcher.poll_arduino()
     pinNumber = chr(14)
     dataList = fetcher.poll_arduino(handshake_func=write_handshake,
                                        command=pinNumber)
-    
-    print dataList
+
+    #print dataList
     pass
 
 

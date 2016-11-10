@@ -10,11 +10,12 @@ It contains a simple bi-directional protocol:
 import time
 import json
 import datetime
-import SerialCommManager as SCM
+from communications import SerialCommManager as SCM
+
 import socket
 from serial.serialutil import SerialException
 from tornado import websocket, web, ioloop
-from SerialCommManager import write_handshake
+from communications.SerialCommManager import write_handshake
 
 SOCKETNAME = r'/ArduMon1'
 SOCKETNAME2 = r'/ArduMon2'
@@ -84,8 +85,7 @@ class WebSocketHandler(websocket.WebSocketHandler):
         #create new ioloop instance to intermittently publish data
         ioloop.IOLoop.instance().add_timeout(datetime.timedelta(seconds=0.1), self.send_data)
 
-if __name__ == "__main__":
-    #create new web app w/ websocket endpoint available at /websocket
+def main():
     print "Starting websocket server program. Awaiting client requests to open websocket ..."
     application1 = web.Application([(SOCKETNAME, WebSocketHandler)])
     application1.listen(SOCKETPORT)
@@ -95,3 +95,7 @@ if __name__ == "__main__":
     print 'Websocket established in {}:{}/{}'.format(socket.gethostbyname(socket.gethostname()),
                                                      SOCKETPORT,SOCKETNAME)   #socket.gethostbyname(socket.getfqdn())
     ioloop.IOLoop.instance().start()
+
+if __name__ == "__main__":
+    #create new web app w/ websocket endpoint available at /websocket
+    main()

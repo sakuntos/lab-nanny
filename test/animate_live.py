@@ -9,7 +9,9 @@ The fast plotting is done by only updating the changing parts of the plot
 Author: David Paredes
 2016
 """
-import SerialCommManager as SCM
+from communications import SerialCommManager as SCM
+#from communications import SerialDataFetcher as SCM
+
 import matplotlib.pyplot as plt
 import numpy as np
 import time

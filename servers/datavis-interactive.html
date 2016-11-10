@@ -130,7 +130,7 @@ function makeButton(pinNumber, containerID){
             d3.select(this).classed("enabled",d3.select(this).classed("enabled") ? false : true);
 
             // Verbose output
-            //console.log(send_data_back(pinNumber,+!AmIOn));
+            console.log(send_data_back(pinNumber,+!AmIOn));
    });
    return myButton
    }
@@ -226,5 +226,3 @@ connection.onmessage = function(event) {
 </script>
 </body>
 </html>
-
-

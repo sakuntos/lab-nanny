@@ -1,159 +1,131 @@
-""" This script runs a webserver that transmits the data from arduino.
+#!/usr/bin/python
+import tornado
+import tornado.websocket
+from tornado import gen, websocket, web, ioloop
 
-The script runs a web application in a certain PORT. Periodically,
-the server polls the ArduMon for data using the SerialDataFetcher. The data
-is then sent out as a JSON dictionary to the clients connected.
-
-Clients can connect to the machine running this server, and the connection is
-performed through the websocket SOCKETNAME using port SOCKETPORT
-"""
-import time
+import sys
 import json
-import datetime
-import SerialCommManager as SDF
-#Uncomment if arduino_emulator is needed
-#from arduino_emulator import ArduinoSerialEmulator
-
+import time
 import socket
+import logging
+
 from serial.serialutil import SerialException
-from tornado import websocket, web, ioloop
-from SerialCommManager import write_handshake
+from communications import SerialCommManager as SCM
+from communications.SerialCommManager import write_handshake
 
-import threading
-import SimpleHTTPServer
-import SocketServer
+
+EMULATE = False
+VERBOSE = True
+
+if EMULATE:
+    from arduino_emulator import ArduinoSerialEmulator
+
+
+
+LOCATION = "ws://localhost:8001/nodes_ws"
 PORT = 3000
-
-
-
-SOCKETNAME = r'/ArduMon1'
-SOCKETNAME2 = r'/ArduMon2'
-SOCKETPORT = 8001
-SOCKETPORT2 = 8002
-
 message_digital_0 = 65
 
+def convert_message_to_command(message):
+    """ This converts a message received through the socket to a command that arduino will interpret.
 
-class WebSocketHandler(websocket.WebSocketHandler):
-    #on open of this socket
-    def open(self):
-        #TODO: Have a way to clean-up the emulated arduino
-        # For emulation, uncomment the following lines
-        #my_emulator = ArduinoSerialEmulator()
-        #emulation_port = my_emulator.report_server()
-        #my_emulator.start()
-        # To avoid emulation
+    :param message: Typically a string indicating the pin number and the state ( eg. "1,false")
+    :return: (pinValue, pinNumber)
+    """
+
+    split_message = message.split(',')
+    pinValue = split_message[1] in ('true','True')
+
+    ## We will use 65+pinNumber for HIGH signals, and 65-pinNumber-1 for LOW signals
+    ## e.g. pin 0 LOW corresponds to 64 and pin 1 HIGH corresponds to 66
+    if pinValue:
+        pinNumber = chr(int(split_message[0])+message_digital_0)
+    else:
+        pinNumber = chr(message_digital_0-int(split_message[0])-1)
+    return (pinValue, pinNumber)
+
+def convert_data(list_of_data):
+    list_of_data = [datum[0]*3.3/4095 for datum in list_of_data]
+    point_data =  {
+        'ch0': list_of_data[0],
+        'ch1' : list_of_data[1],
+        'ch2' : list_of_data[2],
+        'ch3' : list_of_data[3],
+        'ch4' : list_of_data[4],
+        'ch5' : list_of_data[5],
+        'x': time.time(),
+        'error':False   #Distinguishes it from the error state
+    }
+    return point_data
+
+@gen.coroutine
+def keepalive_ws():
+    """
+    Callback executed in the slave nodes.
+
+    It initialises the communications with the arduino and connects, via a websocket, to a certain LOCATION.
+    Then, it enters a loop and waits for signals coming from the master server.
+
+    :return:
+    """
+    #TODO: should the data coming from the arduino be converted here? or in the master?
+    # pro: master does not need to know about the details of the acquisition
+    # con: more data sent through the websocket
+
+    #Init
+    verbose = True
+
+    if EMULATE:
+        print('(node) Emulating arduino')
+        my_emulator = ArduinoSerialEmulator()
+        emulation_port = my_emulator.report_server()
+        my_emulator.start()
+    else:
         emulation_port=[]
-        
-        print 'Connection established.'
-        self.verbose = True
-        
-        self.data_fetcher= SDF.SerialCommManager(0.01, verbose=self.verbose,
-                                                 emulatedPort=emulation_port)
 
-        print 'Data fetcher setup'
-        ## Set up a periodic call to self.send_data, with a periodicity in miliseconds
-        self.callback = ioloop.PeriodicCallback(self.send_data,200)
-        self.callback.start()
+    print('(node) Setting-up arduino communications')
+    arduino_serial_comms= SCM.SerialCommManager(0.001, verbose=verbose,
+                                                     emulatedPort=emulation_port)
 
- #close connection
-    def on_close(self):
-        print 'Connection closed.'
-        
-    def check_origin(self, origin):
-        return True
+    ################################
+    # CONNECT AND LISTEN TO MASTER
+    ################################
+    #Structure of the "listen" loop:
+    # - Read message
+    # - Convert to arduino command
+    # - Connect to arduino using the command
+    # - Receive data from arduino and send back to master
+    client = yield tornado.websocket.websocket_connect(LOCATION)
+    print('(node) waiting for messages:')
+    #This "try" block will look for KeyboardInterrupt events to close the program
+    while True:
 
-    def on_message(self, message):
-        """ The message sent to the arduino is a character around 65.
+        msg = yield client.read_message()
+        pinValue, pinNumber = convert_message_to_command(msg)
 
-        To indicate a HIGH pin, add the pin number to 65.
-        To indicate a LOW pin, subtract the pin number to 65, minus one.
-        This is to distinguish between +0 and -0.
-        """
-        split_message = message.split(',')
-        pinValue = int(split_message[1])        
+        if VERBOSE:
+            print("(node) incoming msg is: {}".format(msg))
+            print("(node) command to arduino: {}".format(pinNumber))
 
-        ## We will use 65+pinNumber for HIGH signals, and 65-pinNumber-1 for LOW signals
-        ## e.g. pin 0 LOW corresponds to 64 and pin 1 HIGH corresponds to 66
-        if pinValue:
-            pinNumber = chr(int(split_message[0])+message_digital_0)
-        else:
-            pinNumber = chr(message_digital_0-int(split_message[0])-1)
-        if self.verbose:
-            print '\n\n--------------------------------------'
-            print 'Message from web received. Init comms'
-            print 'Pin Value',pinValue
-            print 'Initial pin calculated {}, value {}, sending {}----------------'.format(split_message[0], pinValue,(pinNumber))
-        self.data_fetcher.poll_arduino(handshake_func=write_handshake,
-                                       command=pinNumber)
-
-  # Our function to send new (random) data for charts
-    def send_data(self):
-        """ This function sends data through the websocket.
-
-        It is typically called as part of a periodic callback.
-        """
         try:
-            time.sleep(1)
-            t, channels = self.data_fetcher.poll_arduino()
-            print "Data acquired"
-            #create a bunch of random data for various dimensions we want
-            channels = [channel[0]*3.3/4095 for channel in channels]
+            t, channels = arduino_serial_comms.poll_arduino(handshake_func=write_handshake,
+                                                   command=pinNumber)
+            point_data = convert_data(channels)
+            client.write_message(json.dumps(point_data))
 
-            #create a new data point
-            point_data = {
-                'ch0': channels[0],
-                'ch1' : channels[1],
-                'ch2' : channels[2],
-                'ch3' : channels[3],
-                'ch4' : channels[4],
-                'ch5' : channels[5],
-                'x': time.time(),
-                'error':False
-            }
-            #print point_data
-
-        #write the json object to the socket
-            self.write_message(json.dumps(point_data))
         except SerialException:
-            #self.data_fetcher.cleanup()
+            # If the connection is not accessible, send a "standard" dictionary, with the 'error' flag
             point_data = {
-                  'ch0': 0,
-                  'ch1' : 0,
-                  'ch2' : 0,
-                  'ch3' : 0,
-                  'ch4' : 0,
-                  'ch5' : 0,
-                  'x': time.time(),
-                  'error':True
+                'x': time.time(),
+                'error':True
             }
             print 'Serial Exception'
-            self.write_message(json.dumps(point_data))
+            client.write_message(json.dumps(point_data))
+        except KeyboardInterrupt:
+            client.close()
+            tornado.ioloop.IOLoop.instance().stop()
 
-        #ioloop.IOLoop.instance().add_timeout(datetime.timedelta(seconds=0.1), self.send_data)
+
 
 if __name__ == "__main__":
-
-    #Starting web server
-    Handler = SimpleHTTPServer.SimpleHTTPRequestHandler
-    httpd = SocketServer.TCPServer(("", PORT), Handler)
-    print "serving at port", PORT
-    thread = threading.Thread(target=httpd.serve_forever)
-    thread.setdaemon = True
-    
-    try:
-        thread.start()
-        
-        #create new web app w/ websocket endpoint available at SOCKETNAME
-        print "Starting websocket server program. Awaiting client requests to open websocket ..."
-        application1 = web.Application([(SOCKETNAME, WebSocketHandler)])
-        application1.listen(SOCKETPORT)
-        #application2 = web.Application([(SOCKETNAME2, WebSocketHandler)])
-        #application2.listen(SOCKETPORT2)
-        print 'Websocket established in {}:{}/{}'.format(socket.gethostbyname(socket.gethostname()),
-                                                     SOCKETPORT,SOCKETNAME)   #socket.gethostbyname(socket.getfqdn())
-        ioloop.IOLoop.instance().start()
-    except KeyboardInterrupt:
-        httpd.shutdown()
-        sys.exit(0)
-        
+    tornado.ioloop.IOLoop.instance().run_sync(keepalive_ws)

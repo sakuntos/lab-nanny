@@ -66,7 +66,8 @@ if __name__== "__main__":
     my_emulator.start()
     print 'Starting emulation for port {}'.format(emulation_port)
 
-    import SerialCommManager as SCM
+    from communications import SerialCommManager as SCM
+
     comm_mgr = SCM.SerialCommManager(0.01,emulatedPort = emulation_port)
     try:
         while True:
