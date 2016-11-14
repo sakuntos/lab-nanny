@@ -20,29 +20,29 @@ DATA_LEN = 1 # numbers in each array that serial.print does in arduino
 
 def standard_handshake(serialinst,verbose=False):
     """ Send/receive char to synchronize data gathering """
-    nbytes = serialinst.write('z') # can write anything here, just a single byte (any ASCII char)
+    nbytes = serialinst.write("z") # can write anything here, just a single byte (any ASCII char)
     if verbose:
-        print '(std) Wrote bytes to serial port: ', nbytes
+        print('(std) Wrote bytes to serial port: ', nbytes)
     #wait for byte to be received before returning
     st = time.clock()
     byte_back = serialinst.readline()
     et = time.clock()
     if verbose:
-        print '(std) Received handshake data from serial port: {}'.format(byte_back)
-        print '(std) Time between send and receive: ',et-st
+        print('(std) Received handshake data from serial port: {}'.format(byte_back))
+        print('(std) Time between send and receive: {}s'.format(et-st))
 
 def write_handshake(serialinst,verbose=False,command='A'):
     """ Send/receive pair of bytes to synchronize data gathering """
-    nbytes = serialinst.write(command) # can write anything here, just a single byte (any ASCII char)
+    nbytes = serialinst.write(command.encode()) # can write anything here, just a single byte (any ASCII char)
     if verbose:
-        print '(handshake) Wrote bytes to serial port: ', nbytes
+        print('(handshake) Wrote bytes to serial port:{} '.format(nbytes))
     #wait for byte to be received before returning
     st = time.clock()
     byte_back = serialinst.readline()
     et = time.clock()
     if verbose:
-        print '(handshake) Received handshake data from serial port: ',byte_back
-        print '(handshake) Time between send and receive: ',et-st
+        print('(handshake) Received handshake data from serial port: {}'.format(byte_back))
+        print('(handshake) Time between send and receive: {}s'.format(et-st))
 
 
 class SerialCommManager:
@@ -73,6 +73,7 @@ class SerialCommManager:
 
         else:
             port = self.get_arduino_port()
+            print('Trying port: {}'.format(port))
             self.connection_settings= {
                 'port':port,
                 'baudrate':115200,
@@ -83,7 +84,7 @@ class SerialCommManager:
 
     def get_arduino_port(self):
         myPort_generator = port_grep('arduino')
-        firstPort = myPort_generator.next()
+        firstPort = myPort_generator.__next__()
         return firstPort[0]
 
     def poll_arduino(self, handshake_func=standard_handshake,**args):
@@ -112,24 +113,24 @@ class SerialCommManager:
         ##PROCESS
         et = time.clock() - st
         if self.verbose:
-            print '------------------------\n INIT POLLING ARDUINO:\n------------------------'
-            print 'Time reading data (s): {0:.2e},  data: {1}'.format(et,data)
+            print('------------------------\n INIT POLLING ARDUINO:\n------------------------')
+            print('Time reading data (s): {0:.2e},  data: {1}'.format(et,data))
 
         #make string into list of strings, comma separated
-        data_list = data.split(',')
+        data_list = data.split(b',')
+
         # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
         data_array = np.array([float(i) for i in data_list[:-1]])
 
         if self.verbose:
-            print 'Length of array:', len(data_array)
-        # reshape array into 3D array
+            print('Length of array: {}'.format(len(data_array)))
         data_array_3d = data_array.reshape(NUM_CHANNELS, DATA_LEN)
 
         if DATA_LEN>0:
             self.time_axis = data_array_3d[0]
             self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
         if self.verbose:
-            print 'Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st)
+            print('Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st))
 
         return self.time_axis, [channel for channel in self.channels]
 

@@ -34,7 +34,7 @@ def convert_message_to_command(message):
     """
 
     split_message = message.split(',')
-    print message
+    print(message)
     pinValue = int(split_message[2]) # split_message[1] in ('True','true')
     user = split_message[0]
 
@@ -77,7 +77,7 @@ def keepalive_ws():
     # con: more data sent through the websocket
 
     #Init
-    verbose = False
+    verbose = True
     try:
         if EMULATE:
             print('(node) Emulating arduino')
@@ -112,7 +112,7 @@ def keepalive_ws():
         # print('(node) Init message {}'.format(Init_msg))
     except socket.error as error:
         if error.errno == 10061:
-            print '\nConnection refused by host. Maybe it is not running?'
+            print('\nConnection refused by host. Maybe it is not running?')
             raise KeyboardInterrupt
 
 
@@ -126,7 +126,6 @@ def keepalive_ws():
                 print("(node) command to arduino: {}".format(pinNumber))
             #This "try" block will look for KeyboardInterrupt events to close the program
             try:
-                print pinNumber, pinValue
                 t, channels = arduino_serial_comms.poll_arduino(handshake_func=write_handshake,
                                                        command=pinNumber)
                 point_data = convert_data(channels)
@@ -141,7 +140,7 @@ def keepalive_ws():
                     'user':USER_REFERENCE,
                     'error':True
                 }
-                print 'Serial Exception'
+                print('Serial Exception')
                 client.write_message(json.dumps(point_data))
 
 
@@ -151,4 +150,4 @@ if __name__ == "__main__":
         tornado.ioloop.IOLoop.instance().run_sync(keepalive_ws)
     except KeyboardInterrupt:
         tornado.ioloop.IOLoop.instance().close()
-        print 'Exiting gracefully'
+        print('Exiting gracefully')
