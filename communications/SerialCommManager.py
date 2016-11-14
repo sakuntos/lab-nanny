@@ -22,27 +22,27 @@ def standard_handshake(serialinst,verbose=False):
     """ Send/receive char to synchronize data gathering """
     nbytes = serialinst.write('z') # can write anything here, just a single byte (any ASCII char)
     if verbose:
-        print '(std)Wrote bytes to serial port: ', nbytes
+        print '(std) Wrote bytes to serial port: ', nbytes
     #wait for byte to be received before returning
     st = time.clock()
     byte_back = serialinst.readline()
     et = time.clock()
     if verbose:
         print '(std) Received handshake data from serial port: {}'.format(byte_back)
-        print '(std)Time between send and receive: ',et-st
+        print '(std) Time between send and receive: ',et-st
 
 def write_handshake(serialinst,verbose=False,command='A'):
     """ Send/receive pair of bytes to synchronize data gathering """
     nbytes = serialinst.write(command) # can write anything here, just a single byte (any ASCII char)
     if verbose:
-        print 'Wrote bytes to serial port: ', nbytes
+        print '(handshake) Wrote bytes to serial port: ', nbytes
     #wait for byte to be received before returning
     st = time.clock()
     byte_back = serialinst.readline()
     et = time.clock()
     if verbose:
-        print '(handshake)Received handshake data from serial port: ',byte_back
-        print '(handshake)Time between send and receive: ',et-st
+        print '(handshake) Received handshake data from serial port: ',byte_back
+        print '(handshake) Time between send and receive: ',et-st
 
 
 class SerialCommManager:
@@ -129,7 +129,7 @@ class SerialCommManager:
             self.time_axis = data_array_3d[0]
             self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
         if self.verbose:
-            print 'Data acquisition complete. Time spent {0:.2e}'.format( time.clock() - st)
+            print 'Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st)
 
         return self.time_axis, [channel for channel in self.channels]
 
@@ -162,7 +162,6 @@ def main():
     dataList = fetcher.poll_arduino(handshake_func=write_handshake,
                                        command=pinNumber)
 
-    #print dataList
     pass
 
 

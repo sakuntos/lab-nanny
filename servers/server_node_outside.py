@@ -75,7 +75,6 @@ class WebSocketHandler(websocket.WebSocketHandler):
         """
         split_message = message.split(',')
         pinValue = int(split_message[1])
-
         ## We will use 65+pinNumber for HIGH signals, and 65-pinNumber-1 for LOW signals
         ## e.g. pin 0 LOW corresponds to 64 and pin 1 HIGH corresponds to 66
         if pinValue:

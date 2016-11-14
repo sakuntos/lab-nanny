@@ -34,53 +34,137 @@ import tornado.web
 from tornado.concurrent import run_on_executor
 import time
 
+import uuid
 import socket
+import json
 
 SLAVE_SOCKETPORT = 8001
 SLAVE_SOCKETNAME = r'/nodes_ws'
+CLIENT_SOCKETPORT = 8008
+CLIENT_SOCKETNAME = r'/client_ws'
+
 PERIODICITY = 500
 
 class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
     slave_nodes = []
 
+    def initialize(self, comms_handler):
+        """
+        :param comms_handler:
+        :type comms_handler: CommsHandler
+        :return:
+        """
+        """Store a reference to the communications handler"""
+        self.__comms_handler = comms_handler
+
     def open(self):
         # We could do here the configuration of the node, like a dictionary with the channels exposed
-        print 'new connection'
-        #self.write_message("Initialising connection")
-        print self.request.remote_ip
+
+        #self.write_message('Init')
+
         SlaveNodeHandler.slave_nodes.append(self)
-        print SlaveNodeHandler.slave_nodes
+        self.id = uuid.uuid4()
+        print 'new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(SlaveNodeHandler.slave_nodes))
+        print 'UUID: {}'.format(self.id)
+
+
 
     def on_message(self, message): #From the Node
-        print 'message received %s' % message
+
+        message_dict = json.loads(message)
+        if message_dict['error']==False:
+            print 'time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'.format(message_dict["x"],
+                                                                  message_dict["user"],
+                                                                  message_dict["error"],
+                                                                  message_dict["ch0"])
+        else:
+            print 'time: {0:.3f}, user: {1}, error: {2}'.format(message_dict["x"],
+                                                                  message_dict["user"],
+                                                                  message_dict["error"])
+
+        # If we do this, we send a message to the clients for each reading. Maybe it will be slow
+        for client in self.__comms_handler.clients:
+            client.write_message(message)
 
     def on_close(self):
         print 'connection closed'
         SlaveNodeHandler.slave_nodes.remove(self)
 
+    def check_origin(self, origin):
+        #TODO: change this to actually check the origin
+        return True
+
     @classmethod
     def broadcast_to_slave_nodes(cls):
         try:
-            msg = "0,False"
-            print "Writing message \"{}\" to {} clients. Time: {}".format(msg,len(cls.slave_nodes),time.time())
+            msg = 'X,50,0'  #Write a command that causes "no harm", i.e. we don't actually use. The 'X' ensures that all nodes reply
+
+            #We write to all the clients, but only the right user will actually generate output
+            # TODO: should only send data to the right connection, instead of relying on the nodes to check whether the message is for them?
             for ii, client in enumerate(cls.slave_nodes):
                 client.write_message(msg)
         except KeyboardInterrupt:
             raise
 
-def periodicCall():
-    print 'hello'
+
+class ClientHandler(tornado.websocket.WebSocketHandler):
+    client_list = []
+
+    def initialize(self, comms_handler):
+        """
+        :param comms_handler:
+        :type comms_handler: CommsHandler
+        :return:
+        """
+        """Store a reference to the communications handler"""
+        self.__comms_handler = comms_handler
+
+    def open(self):
+        # We could do here the configuration of the node, like a dictionary with the channels exposed
+        ClientHandler.client_list.append(self)
+        print 'new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(ClientHandler.client_list))
+
+    def on_message(self, message): #From the Node
+        print 'message received from client: %s' % message
+        for node in self.__comms_handler.server_nodes:
+            node.write_message(message)
+
+
+    def on_close(self):
+        print 'connection closed'
+        ClientHandler.client_list.remove(self)
+
+    def check_origin(self, origin):
+        return True
+
+
+class CommsHandler(object):
+    def __init__(self):
+        self.server_nodes =SlaveNodeHandler.slave_nodes
+        self.clients=ClientHandler.client_list
+
+    def broadcast_to_slaves(self):
+        SlaveNodeHandler.broadcast_to_slave_nodes()
+
 
 if __name__ == "__main__":
-    application = tornado.web.Application([(SLAVE_SOCKETNAME, SlaveNodeHandler)])
+    comms_handler = CommsHandler()
+    application = tornado.web.Application([(SLAVE_SOCKETNAME, SlaveNodeHandler,{'comms_handler':comms_handler}),
+                                           (CLIENT_SOCKETNAME, ClientHandler,{'comms_handler':comms_handler})])
     application.listen(SLAVE_SOCKETPORT)
-    print 'Websocket established in {}:{}/{}'.format(socket.gethostbyname(socket.gethostname()),
-                                                     SLAVE_SOCKETPORT, SLAVE_SOCKETNAME)   #socket.gethostbyname(socket.getfqdn())
-    #http_server = tornado.httpserver.HTTPServer(application)
-    #http_server.listen(SOCKETPORT)
 
-    #callback= ioloop.PeriodicCallback(periodicCall,PERIODICITY)
-    callback= ioloop.PeriodicCallback(SlaveNodeHandler.broadcast_to_slave_nodes,PERIODICITY)
+    print('Two connections created:')
+    print('-Client WS EST @ {}:{}{},  ({})'.format(socket.getfqdn(),
+                                                     CLIENT_SOCKETPORT, CLIENT_SOCKETNAME,socket.gethostbyname(socket.gethostname())))
+    print('-Nodes WS EST  @ {}:{}{},  ({})'.format(socket.getfqdn(),
+                                                     SLAVE_SOCKETPORT, SLAVE_SOCKETNAME,socket.gethostbyname(socket.gethostname())))
+
+    callback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
     callback.start()
     print 'starting ioloop'
-    ioloop.IOLoop.instance().start()
+    try:
+        ioloop.IOLoop.instance().start()
+    except KeyboardInterrupt:
+        ioloop.IOLoop.instance().stop()
+        print 'Exiting gracefully...'
+

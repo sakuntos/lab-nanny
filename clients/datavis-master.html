@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<html lang="en">
+
+<style>
+
+.title{
+ color: #000;
+ font: bold 48px monospace;
+}
+
+.line {
+  fill: none;
+  stroke: #000;
+  stroke-width: 1.0px;
+}
+
+.line2 {
+  stroke: #F00;
+}
+
+.button{
+  fill: #000;
+  stroke: #000;
+  stroke-width: 1.0px;
+}
+.disabled {
+  opacity:0.2;
+}
+.lab7{
+  stroke:#7fff00;
+  fill:#7fff00;
+
+}
+
+
+.error{
+ color: red;
+ font: bold 35px monospace;
+}
+
+.not_error{
+  font: bold 35px monospace;
+  color:#000;
+
+}
+</style>
+<body>
+<div id="title" class="title">Lab-nanny v.0.5</div>
+<div id="left_graphs" style="float:left">
+Lab6, Ch0 <div id="graph0" class="aGraph" style="width:450px; height:50px;"></div>
+Lab6, Ch1 <div id="graph1" class="aGraph" style="width:450px; height:70px;"></div>
+Lab6, Ch2 <div id="graph2" class="aGraph" style="width:450px; height:70px;"></div>
+Lab7, Ch0 <div id="graph3" class="aGraph" style="width:450px; height:70px;"></div>
+Lab7, Ch1 <div id="graph4" class="aGraph" style="width:450px; height:70px;"></div>
+Lab7, Ch2 <div id="graph5" class="aGraph" style="width:450px; height:70px;"></div>
+</div>
+<div id="connection_text_lab6" class="text"></div>
+<div id="connection_text_lab7" class="text"></div>
+<div id="error_text" class="text"></div>
+<div id="toggle_square"></div>
+
+<script src="//d3js.org/d3.v4.min.js"></script>
+<script>
+// n     = number of points
+// dataX = data holder for the X channel
+var n = 1000,
+    random = d3.randomNormal(0, .2),
+    data0 = d3.range(n).map(function(){return 1;}),
+    data1 = d3.range(n).map(function(){return 1;}),
+    data2 = d3.range(n).map(function(){return 1;}),
+    data3 = d3.range(n).map(function(){return 1;}),
+    data4 = d3.range(n).map(function(){return 1;}),
+    data5 = d3.range(n).map(function(){return 1;}),
+    width = 400,
+    height=50,
+    margin = {top:0, right: 0, bottom: 20, left: 0};
+function sleep (time) {
+  return new Promise((resolve) => setTimeout(resolve, time));
+}
+
+var connection = new WebSocket('ws://10.3.20.25:8001/client_ws');
+//var connection = new WebSocket('ws://10.3.20.25:8001/ArduMon1');
+
+var x = d3.scaleLinear()
+    .domain([0, n - 1])
+    .range([0, width-margin.right-margin.left]);
+var y = d3.scaleLinear()
+    .domain([0, 3.3])
+    .range([height-margin.top-margin.bottom, 0]);
+
+var line = d3.line()
+        // assign the X function to plot our line as we wish
+        .x(function(d,i) {
+            // verbose logging to show what's actually being done
+            //console.log('Plotting X value for data point: ' + d + ' using index: ' + i + ' to be at: ' + x(i) + ' using our xScale.');
+            // return the X coordinate where we want to plot this datapoint
+            return x(i);
+        })
+        .y(function(d) {
+            // return the Y coordinate where we want to plot this datapoint
+            return y(d);
+        });
+
+
+//var toggle_text = d3.select("#toggle_text").attr("class","not_error")
+//       .text('Toggle LED')
+//        .on('click',function(d,i){ connection.send("Hello");});
+
+
+function send_data_back(lab,number,state){
+  var message =  [lab,number,state];
+  connection.send(message);
+  return state
+ }
+
+function makeButton(lab,pinNumber, containerID){
+   var buttonSVG = d3.select(containerID).append("svg:svg")
+   .attr("width", 30)
+   .attr("height", 60);
+   var myButton = buttonSVG.append("rect")
+          .attr("x",5)
+          .attr("y",5)
+          .attr("rx", 4)
+          .attr("ry", 4)
+          .attr("width", 20)
+          .attr("height",20)
+          .attr("class","button")
+          .classed("disabled",true)
+          .classed(lab,true)
+          .attr("pinNumber",pinNumber)
+          .on("click", function() {
+            var AmIOn = d3.select(this).classed("disabled");
+            d3.select(this).classed("disabled",AmIOn ? false : true);
+
+            // Verbose output
+            console.log(send_data_back(lab,pinNumber,+AmIOn));
+   });
+   var myText = buttonSVG.append("text")
+          .attr("x",5)
+          .attr("y",60)
+          .attr("dy", "-1em")
+          .text(pinNumber);
+   return myButton
+   }
+
+
+button1 = makeButton("lab7",11,"#toggle_square");
+button2 = makeButton("lab7",13,"#toggle_square");
+button3 = makeButton("lab6",11,"#toggle_square");
+button4 = makeButton("lab6",13,"#toggle_square");
+
+
+//buttonSVG.on('click',function(d,i){ connection.send("Hello");});
+
+function displayGraphExample(id) {
+   var graph = d3.select(id).append("svg:svg")
+              .attr("width", width)
+              .attr("height", height);
+   g = graph.append("g").attr("transform","translate(" + margin.left + "," + margin.top + ")");
+    var width1 = +width - margin.left - margin.right,
+    height1 = +height - margin.top - margin.bottom;
+   g.append("defs").append("clipPath")
+    .attr("id", "clip")
+    .append("rect")
+    .attr("width", width1)
+    .attr("height", height1);
+   g.append("g")
+    .attr("class", "axis axis--x")
+    .attr("transform", "translate(0," + y(0) + ")")
+    .call(d3.axisBottom(x));
+
+     g.append("g")
+      .attr("clip-path", "url(#clip)")
+    myLine = g.append("path")
+    .datum(data1)
+    .attr("class", "line line1")
+    .attr("d",line);
+
+   //myLine = g.append("svg:path").attr("class","line").attr("d", line(data1));
+        // or it can be done like this
+        //graph.selectAll("path").data([data1]).enter().append("svg:path").attr("d", line);
+   return myLine;
+
+  }
+
+function redrawWithoutAnimation(myLine, myData) {
+            // static update without animation
+            myLine.data([myData]) // set the new data
+                .attr("d", line); // apply the new data values
+        }
+
+var connection_text_lab6 = d3.select("#connection_text_lab6").attr("class","not_error")
+        .text('Connected?');
+var connection_text_lab7 = d3.select("#connection_text_lab7").attr("class","not_error")
+        .text('Connected?');
+var error_text = d3.select("#error_text").attr("class","not_error")
+        .text('Error?');
+
+
+var line0=displayGraphExample("#graph0");
+var line1=displayGraphExample("#graph1");
+var line2=displayGraphExample("#graph2");
+var line3=displayGraphExample("#graph3");
+var line4=displayGraphExample("#graph4");
+var line5=displayGraphExample("#graph5");
+
+
+
+connection.onmessage = function(event) {
+
+    var newData = JSON.parse(event.data);
+    // if no error found, update data points and redraw
+
+    if(newData.user=="lab6"){
+      if(!newData.error){
+        data0.push(newData.ch0);
+        data0.shift();
+        data1.push(newData.ch1);
+        data1.shift();
+        data2.push(newData.ch2);
+        data2.shift();
+        redrawWithoutAnimation(line0,data0);
+        redrawWithoutAnimation(line1,data1);
+        redrawWithoutAnimation(line2,data2);
+        connection_text_lab6.attr("class","not_error");
+        }
+        else{
+          data0.push(0);
+          data0.shift();
+          data1.push(0);
+          data1.shift();
+          data2.push(0);
+          data2.shift();
+          redrawWithoutAnimation(line0,data0);
+          redrawWithoutAnimation(line1,data1);
+          redrawWithoutAnimation(line2,data2);
+          connection_text_lab6.attr("class","error");
+        }
+    } else if(newData.user=="lab7"){
+      if(!newData.error){
+        data3.push(newData.ch0);
+        data3.shift();
+        data4.push(newData.ch1);
+        data4.shift();
+        data5.push(newData.ch2);
+        data5.shift();
+        redrawWithoutAnimation(line3,data3);
+        redrawWithoutAnimation(line4,data4);
+        redrawWithoutAnimation(line5,data5);
+        connection_text_lab7.attr("class","not_error");
+      }
+      else{
+        data3.push(0);
+        data3.shift();
+        data4.push(0);
+        data4.shift();
+        data5.push(0);
+        data5.shift();
+        redrawWithoutAnimation(line3,data3);
+        redrawWithoutAnimation(line4,data4);
+        redrawWithoutAnimation(line5,data5);
+        connection_text_lab7.attr("class","error");
+      }
+
+    }
+  }
+
+</script>
+</body>
+</html>

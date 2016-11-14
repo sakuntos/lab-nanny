@@ -49,3 +49,5 @@ Temporary Items
 # Directories created by the pyCharm
 .idea
 *.pyc
+*.pyc
+*.pyc
