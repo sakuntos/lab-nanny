@@ -43,7 +43,8 @@ SLAVE_SOCKETNAME = r'/nodes_ws'
 CLIENT_SOCKETPORT = 8008
 CLIENT_SOCKETNAME = r'/client_ws'
 
-PERIODICITY = 500
+PERIODICITY = 20
+DB_PERIODICITY = 30000
 
 class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
     slave_nodes = []
@@ -161,6 +162,9 @@ if __name__ == "__main__":
 
     callback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
     callback.start()
+
+    #dbcallback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
+    #dbcallback.start()
     print('starting ioloop')
     try:
         ioloop.IOLoop.instance().start()

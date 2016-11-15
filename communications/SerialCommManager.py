@@ -57,7 +57,6 @@ class SerialCommManager:
         self.recording_time = recording_time
         self.verbose = verbose
         self.time_axis = None
-
         # Obtain the id of the first port to use "arduino" as ID.
         if emulatedPort:
             port=emulatedPort
@@ -84,7 +83,10 @@ class SerialCommManager:
 
     def get_arduino_port(self):
         myPort_generator = port_grep('arduino')
-        firstPort = myPort_generator.__next__()
+        try:
+            firstPort = myPort_generator.next()  # .__next__() # for python3
+        except AttributeError:
+            firstPort = myPort_generator.__next__()
         return firstPort[0]
 
     def poll_arduino(self, handshake_func=standard_handshake,**args):
@@ -103,36 +105,40 @@ class SerialCommManager:
         #TODO: Check if connection_to_server needs to be done for every poll
         #TODO: Send/receive data in byte form?
         ## CONNECTION
-        self.connect_to_server()
-        st = time.clock()
-        handshake_func(self.ser,verbose=self.verbose,**args)
+        #self.connect_to_server()
+
+        with serial.Serial(**self.connection_settings) as ser:
+            st = time.clock()
+            handshake_func(ser,verbose=self.verbose,**args)
         #get data
-        data = self.ser.readline()
-        self.ser.close()
+            data = ser.readline()
 
-        ##PROCESS
-        et = time.clock() - st
-        if self.verbose:
-            print('------------------------\n INIT POLLING ARDUINO:\n------------------------')
-            print('Time reading data (s): {0:.2e},  data: {1}'.format(et,data))
+            ##PROCESS
+            et = time.clock() - st
+            if self.verbose:
+                print('------------------------\n INIT POLLING ARDUINO:\n------------------------')
+                print('Time reading data (s): {0:.2e},  data: {1}'.format(et,data))
 
-        #make string into list of strings, comma separated
-        data_list = data.split(b',')
+            #make string into list of strings, comma separated
+            data_list = data.split(b',')
 
-        # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
-        data_array = np.array([float(i) for i in data_list[:-1]])
+            # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
+            data_array = np.array([float(i) for i in data_list[:-1]])
 
-        if self.verbose:
+            #if self.verbose:
             print('Length of array: {}'.format(len(data_array)))
-        data_array_3d = data_array.reshape(NUM_CHANNELS, DATA_LEN)
+            data_array_3d = data_array.reshape(NUM_CHANNELS,DATA_LEN)
 
-        if DATA_LEN>0:
-            self.time_axis = data_array_3d[0]
-            self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
-        if self.verbose:
-            print('Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st))
+            if DATA_LEN>0:
+                self.time_axis = data_array_3d[0]
+                self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
+            if self.verbose:
+                print('Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st))
 
-        return self.time_axis, [channel for channel in self.channels]
+            return self.time_axis, [channel for channel in self.channels]
+        else:
+            raise serial.SerialException
+
 
 
     def connect_to_server(self):
@@ -141,15 +147,9 @@ class SerialCommManager:
         :return:
         """
         self.ser = serial.Serial(**self.connection_settings)
-        # self.ser = serial.Serial(
         #     port ='/dev/cu.usbmodemfa131',
         #     #port='COM6',   #look in the arduino software
-        #     baudrate=115200,
-        #     parity=serial.PARITY_NONE,
-        #     stopbits=serial.STOPBITS_ONE,
-        #     bytesize=serial.EIGHTBITS,
-        #     timeout=self.recording_time # seconds - should be the same amount of time as the arduino will send data for + 1
-        # )
+
 
     def cleanup(self):
         self.ser.close()

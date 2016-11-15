@@ -3,7 +3,10 @@ Software emulated response of the arduino.
 
 For testing purposes.
 """
-import os, pty, serial, time
+import os
+import pty
+import serial
+import time
 from numpy import sin,pi
 import threading
 
@@ -20,13 +23,13 @@ class ArduinoSerialEmulator(threading.Thread):
         self.channels_value=[]
         
         if verbose:
-            print "\nTTY open in {}".format(self.s_name)
+            print("\nTTY open in {}".format(self.s_name))
 
     def report_server(self):
         return self.s_name
 
     def run(self):
-        print 'Entering arduino emulation loop'
+        print('Entering arduino emulation loop')
         self.keepRunning = True
 
         #This loop continualy looks for a command from the node computer and writes a series of values in response.
@@ -47,7 +50,7 @@ class ArduinoSerialEmulator(threading.Thread):
                 os.write(self.master,fullString)
         except KeyboardInterrupt:
             self.join()
-        print 'Exiting emulation loop'
+        print('Exiting emulation loop')
             
     def myFunction(self, time, offset):
         return int((sin((time-self.init_time+offset)*pi/5)+1)*2**11)
@@ -64,7 +67,7 @@ if __name__== "__main__":
     my_emulator = ArduinoSerialEmulator()
     emulation_port = my_emulator.report_server()
     my_emulator.start()
-    print 'Starting emulation for port {}'.format(emulation_port)
+    print('Starting emulation for port {}'.format(emulation_port))
 
     from communications import SerialCommManager as SCM
 
