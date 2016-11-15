@@ -113,6 +113,7 @@ class SerialCommManager:
         #get data
             data = ser.readline()
 
+        if data is not []:
             ##PROCESS
             et = time.clock() - st
             if self.verbose:
