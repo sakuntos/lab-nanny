@@ -15,6 +15,8 @@ import serial
 import numpy as np
 from serial.tools.list_ports import grep as port_grep
 import logging
+
+X0E = serial.to_bytes([0x0e])
 NUM_CHANNELS = 9 # number of total channels (time axis + ADC channels 0-7)
 DATA_LEN = 1 # numbers in each array that serial.print does in arduino
 
@@ -113,13 +115,13 @@ class SerialCommManager:
         #get data
             data = ser.readline()
 
-        if data is not []:
+        if data[0] != X0E:
             ##PROCESS
             et = time.clock() - st
             if self.verbose:
                 print('------------------------\n INIT POLLING ARDUINO:\n------------------------')
-                print('Time reading data (s): {0:.2e},  data: {1}'.format(et,data))
-
+                print('Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
+            print(data[0] == X0E)
             #make string into list of strings, comma separated
             data_list = data.split(b',')
 

@@ -43,7 +43,7 @@ SLAVE_SOCKETNAME = r'/nodes_ws'
 CLIENT_SOCKETPORT = 8008
 CLIENT_SOCKETNAME = r'/client_ws'
 
-PERIODICITY = 20
+PERIODICITY = 100
 DB_PERIODICITY = 30000
 
 class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
@@ -171,4 +171,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         ioloop.IOLoop.instance().stop()
         print('Exiting gracefully...')
-

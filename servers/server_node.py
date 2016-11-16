@@ -43,9 +43,6 @@ class SlaveNode(object):
             print("Verbose mode")
         print("Emulation = {}".format(self.emulate))
         print("Master WS connection = {}".format(self.location))
-        if self.emulate:
-            from servers.arduino_emulator import ArduinoSerialEmulator
-
 
 
     @gen.coroutine
@@ -95,19 +92,19 @@ class SlaveNode(object):
         try:
             client = yield tornado.websocket.websocket_connect(self.location)
             print('(node) waiting for messages:')
-            # Init_msg = yield client.read_message()
-            # if Init_msg == 'Init':
-            #     client.write_message(USER_REFERENCE)
-            # print('(node) Init message {}'.format(Init_msg))
+
         except socket.error as error:
             if error.errno == 10061:
                 print('\nConnection refused by host. Maybe it is not running?')
                 raise KeyboardInterrupt
 
-
         while not errorState:
+            try:
+                msg = yield client.read_message()
+            except UnboundLocalError:
+                print('\nConnection refused by host. Maybe it is not running?')
+                raise KeyboardInterrupt
 
-            msg = yield client.read_message()
             user, pinValue, pinNumber = convert_message_to_command(msg)
             #Check if the message is for this node
             if user in (self.reference,'X'):
@@ -204,7 +201,8 @@ if __name__ == "__main__":
     parser.add_argument("-v","--verbose",help="Activate verbose",
         type=int,default=0)
     args = parser.parse_args()
-
+    if args.emulate:
+        from servers.arduino_emulator import ArduinoSerialEmulator
     slaveNodeInstance = SlaveNode(emulate=args.emulate,
                                   masterWSlocation=args.websocket,
                                   reference=args.reference,
@@ -213,5 +211,6 @@ if __name__ == "__main__":
     try:
         tornado.ioloop.IOLoop.instance().run_sync(slaveNodeInstance.keepalive_ws)
     except KeyboardInterrupt:
+        slaveNodeInstance.client.close()
         tornado.ioloop.IOLoop.instance().close()
         print('Exiting gracefully')
