@@ -43,7 +43,8 @@ SLAVE_SOCKETNAME = r'/nodes_ws'
 CLIENT_SOCKETPORT = 8008
 CLIENT_SOCKETNAME = r'/client_ws'
 
-PERIODICITY = 500
+PERIODICITY = 100
+DB_PERIODICITY = 30000
 
 class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
     slave_nodes = []
@@ -64,8 +65,8 @@ class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
 
         SlaveNodeHandler.slave_nodes.append(self)
         self.id = uuid.uuid4()
-        print 'new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(SlaveNodeHandler.slave_nodes))
-        print 'UUID: {}'.format(self.id)
+        print('new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(SlaveNodeHandler.slave_nodes)))
+        print('UUID: {}'.format(self.id))
 
 
 
@@ -73,21 +74,21 @@ class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
 
         message_dict = json.loads(message)
         if message_dict['error']==False:
-            print 'time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'.format(message_dict["x"],
+            print('time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'.format(message_dict["x"],
                                                                   message_dict["user"],
                                                                   message_dict["error"],
-                                                                  message_dict["ch0"])
+                                                                  message_dict["ch0"]))
         else:
-            print 'time: {0:.3f}, user: {1}, error: {2}'.format(message_dict["x"],
+            print('time: {0:.3f}, user: {1}, error: {2}'.format(message_dict["x"],
                                                                   message_dict["user"],
-                                                                  message_dict["error"])
+                                                                  message_dict["error"]))
 
         # If we do this, we send a message to the clients for each reading. Maybe it will be slow
         for client in self.__comms_handler.clients:
             client.write_message(message)
 
     def on_close(self):
-        print 'connection closed'
+        print('connection closed')
         SlaveNodeHandler.slave_nodes.remove(self)
 
     def check_origin(self, origin):
@@ -122,16 +123,16 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
     def open(self):
         # We could do here the configuration of the node, like a dictionary with the channels exposed
         ClientHandler.client_list.append(self)
-        print 'new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(ClientHandler.client_list))
+        print('new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(ClientHandler.client_list)))
 
     def on_message(self, message): #From the Node
-        print 'message received from client: %s' % message
+        print('message received from client: {}'.format(message))
         for node in self.__comms_handler.server_nodes:
             node.write_message(message)
 
 
     def on_close(self):
-        print 'connection closed'
+        print('connection closed')
         ClientHandler.client_list.remove(self)
 
     def check_origin(self, origin):
@@ -161,10 +162,12 @@ if __name__ == "__main__":
 
     callback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
     callback.start()
-    print 'starting ioloop'
+
+    #dbcallback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
+    #dbcallback.start()
+    print('starting ioloop')
     try:
         ioloop.IOLoop.instance().start()
     except KeyboardInterrupt:
         ioloop.IOLoop.instance().stop()
-        print 'Exiting gracefully...'
-
+        print('Exiting gracefully...')

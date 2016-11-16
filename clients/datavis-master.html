@@ -15,8 +15,10 @@
   stroke-width: 1.0px;
 }
 
-.line2 {
-  stroke: #F00;
+.line.disconnected{
+  fill: none;
+  stroke: #f00;
+  stroke-width: 1.0px;
 }
 
 .button{
@@ -27,60 +29,84 @@
 .disabled {
   opacity:0.2;
 }
+
 .lab7{
-  stroke:#7fff00;
-  fill:#7fff00;
-
+  stroke:#88CCEE;
+  fill:#88CCEE;
+  color:#88CCEE;
 }
 
+.lab6{
+  stroke:#882255;
+  fill:#882255;
+  color:#882255;
+}
 
+.lab8{
+  stroke:#999933;
+  fill:#999933;
+  color:#999933;
+}
+
+.connectionText{
+  font-weight: bold;
+  font-size: 35px;
+  font-family: monospace;
+}
 .error{
- color: red;
- font: bold 35px monospace;
-}
+ opacity:0.2;
 
+}
 .not_error{
-  font: bold 35px monospace;
-  color:#000;
-
+  font-weight: bold;
+  font-size: 35px;
 }
+
 </style>
 <body>
 <div id="title" class="title">Lab-nanny v.0.5</div>
 <div id="left_graphs" style="float:left">
-Lab6, Ch0 <div id="graph0" class="aGraph" style="width:450px; height:50px;"></div>
-Lab6, Ch1 <div id="graph1" class="aGraph" style="width:450px; height:70px;"></div>
-Lab6, Ch2 <div id="graph2" class="aGraph" style="width:450px; height:70px;"></div>
-Lab7, Ch0 <div id="graph3" class="aGraph" style="width:450px; height:70px;"></div>
-Lab7, Ch1 <div id="graph4" class="aGraph" style="width:450px; height:70px;"></div>
-Lab7, Ch2 <div id="graph5" class="aGraph" style="width:450px; height:70px;"></div>
+<div id="connection_text_lab6" class="text lab6"></div>
+<div id="graph0" class="aGraph" style="width:450px;"></div>
+<div id="connection_text_lab7" class="text lab7"></div>
+<div id="graph1" class="aGraph" style="width:450px;"></div>
 </div>
-<div id="connection_text_lab6" class="text"></div>
-<div id="connection_text_lab7" class="text"></div>
-<div id="error_text" class="text"></div>
-<div id="toggle_square"></div>
+
+<div id="toggle_buttons"></div>
 
 <script src="//d3js.org/d3.v4.min.js"></script>
 <script>
 // n     = number of points
 // dataX = data holder for the X channel
 var n = 1000,
+    periodicity=0.1,
     random = d3.randomNormal(0, .2),
-    data0 = d3.range(n).map(function(){return 1;}),
-    data1 = d3.range(n).map(function(){return 1;}),
-    data2 = d3.range(n).map(function(){return 1;}),
     data3 = d3.range(n).map(function(){return 1;}),
     data4 = d3.range(n).map(function(){return 1;}),
     data5 = d3.range(n).map(function(){return 1;}),
     width = 400,
     height=50,
-    margin = {top:0, right: 0, bottom: 20, left: 0};
+    margin = {top:0, right: 0, bottom: 20, left: 0},
+    lab6dictionary={name:"lab6",pins:[11,13,17],analogchannels:["ch0","ch2"],
+    data:{}, lines:{}, buttons:[]},
+    lab7dictionary={name:"lab7",pins:[11,13,17,25],analogchannels:["ch0","ch1","ch2"],
+    data:{}, lines:{}, buttons:[]};
+
+
 function sleep (time) {
   return new Promise((resolve) => setTimeout(resolve, time));
 }
 
-var connection = new WebSocket('ws://10.3.20.25:8001/client_ws');
+var connection = new WebSocket('ws://localhost:8001/client_ws');
 //var connection = new WebSocket('ws://10.3.20.25:8001/ArduMon1');
+var connection_text_lab6 = d3.select("#connection_text_lab6")
+        .classed("error",true)
+        .classed("connectionText",true)
+        .text('Lab6 connected');
+var connection_text_lab7 = d3.select("#connection_text_lab7")
+        .classed("error",true)
+        .classed("connectionText",true)
+        .text('Lab7 connected');
 
 var x = d3.scaleLinear()
     .domain([0, n - 1])
@@ -102,10 +128,6 @@ var line = d3.line()
             return y(d);
         });
 
-
-//var toggle_text = d3.select("#toggle_text").attr("class","not_error")
-//       .text('Toggle LED')
-//        .on('click',function(d,i){ connection.send("Hello");});
 
 
 function send_data_back(lab,number,state){
@@ -144,16 +166,7 @@ function makeButton(lab,pinNumber, containerID){
    return myButton
    }
 
-
-button1 = makeButton("lab7",11,"#toggle_square");
-button2 = makeButton("lab7",13,"#toggle_square");
-button3 = makeButton("lab6",11,"#toggle_square");
-button4 = makeButton("lab6",13,"#toggle_square");
-
-
-//buttonSVG.on('click',function(d,i){ connection.send("Hello");});
-
-function displayGraphExample(id) {
+function displayGraphExample(id,channel) {
    var graph = d3.select(id).append("svg:svg")
               .attr("width", width)
               .attr("height", height);
@@ -173,8 +186,8 @@ function displayGraphExample(id) {
      g.append("g")
       .attr("clip-path", "url(#clip)")
     myLine = g.append("path")
-    .datum(data1)
-    .attr("class", "line line1")
+    .datum(d3.range(n).map(function(){return 1;})) //Initial data
+    .attr("class", "line")
     .attr("d",line);
 
    //myLine = g.append("svg:path").attr("class","line").attr("d", line(data1));
@@ -190,21 +203,36 @@ function redrawWithoutAnimation(myLine, myData) {
                 .attr("d", line); // apply the new data values
         }
 
-var connection_text_lab6 = d3.select("#connection_text_lab6").attr("class","not_error")
-        .text('Connected?');
-var connection_text_lab7 = d3.select("#connection_text_lab7").attr("class","not_error")
-        .text('Connected?');
-var error_text = d3.select("#error_text").attr("class","not_error")
-        .text('Error?');
+function add_data_to_buffer(buffer, data){
+  buffer.push(data);
+  buffer.shift();
+  return buffer;
+}
 
 
-var line0=displayGraphExample("#graph0");
-var line1=displayGraphExample("#graph1");
-var line2=displayGraphExample("#graph2");
-var line3=displayGraphExample("#graph3");
-var line4=displayGraphExample("#graph4");
-var line5=displayGraphExample("#graph5");
+// Add buttons
+lab6dictionary.pins.forEach(function(pin){
+  var my_button = makeButton(lab6dictionary.name,pin,"#toggle_buttons");
+  lab6dictionary.buttons.push(my_button);
+});
+lab7dictionary.pins.forEach(function(pin){
+  var my_button = makeButton(lab7dictionary.name,pin,"#toggle_buttons");
+  lab7dictionary.buttons.push(my_button);
+});
 
+//Add data
+lab6dictionary.analogchannels.forEach(function(channel){
+  var line_data = d3.range(n).map(function(){return 1;});
+  var my_line = displayGraphExample("#graph0",channel);
+  lab6dictionary.data[channel]=line_data;
+  lab6dictionary.lines[channel] = my_line;
+});
+lab7dictionary.analogchannels.forEach(function(channel){
+  var line_data = d3.range(n).map(function(){return 1;});
+  var my_line = displayGraphExample("#graph1",channel);
+  lab7dictionary.data[channel]=line_data;
+  lab7dictionary.lines[channel]=my_line;
+});
 
 
 connection.onmessage = function(event) {
@@ -214,53 +242,43 @@ connection.onmessage = function(event) {
 
     if(newData.user=="lab6"){
       if(!newData.error){
-        data0.push(newData.ch0);
-        data0.shift();
-        data1.push(newData.ch1);
-        data1.shift();
-        data2.push(newData.ch2);
-        data2.shift();
-        redrawWithoutAnimation(line0,data0);
-        redrawWithoutAnimation(line1,data1);
-        redrawWithoutAnimation(line2,data2);
-        connection_text_lab6.attr("class","not_error");
+        lab6dictionary.analogchannels.forEach(function(channel){
+          add_data_to_buffer(lab6dictionary.data[channel],newData[channel]);
+          redrawWithoutAnimation(lab6dictionary.lines[channel],
+            lab6dictionary.data[channel]);
+            lab6dictionary.lines[channel].classed('disconnected',false)
+        })
+
+        connection_text_lab6.classed("error",false);
         }
         else{
-          data0.push(0);
-          data0.shift();
-          data1.push(0);
-          data1.shift();
-          data2.push(0);
-          data2.shift();
-          redrawWithoutAnimation(line0,data0);
-          redrawWithoutAnimation(line1,data1);
-          redrawWithoutAnimation(line2,data2);
-          connection_text_lab6.attr("class","error");
+          lab6dictionary.analogchannels.forEach(function(channel){
+            add_data_to_buffer(lab6dictionary.data[channel],-0.5);
+            redrawWithoutAnimation(lab6dictionary.lines[channel],
+              lab6dictionary.data[channel]);
+            lab6dictionary.lines[channel].classed('disconnected',true)
+          })
+          connection_text_lab6.classed("error",true);
         }
-    } else if(newData.user=="lab7"){
+    }
+    if(newData.user=="lab7"){
       if(!newData.error){
-        data3.push(newData.ch0);
-        data3.shift();
-        data4.push(newData.ch1);
-        data4.shift();
-        data5.push(newData.ch2);
-        data5.shift();
-        redrawWithoutAnimation(line3,data3);
-        redrawWithoutAnimation(line4,data4);
-        redrawWithoutAnimation(line5,data5);
-        connection_text_lab7.attr("class","not_error");
+        lab7dictionary.analogchannels.forEach(function(channel){
+          add_data_to_buffer(lab7dictionary.data[channel],newData[channel]);
+          redrawWithoutAnimation(lab7dictionary.lines[channel],
+            lab7dictionary.data[channel]);
+          lab7dictionary.lines[channel].classed('disconnected',false);
+        })
+        connection_text_lab7.classed("error",false);
       }
       else{
-        data3.push(0);
-        data3.shift();
-        data4.push(0);
-        data4.shift();
-        data5.push(0);
-        data5.shift();
-        redrawWithoutAnimation(line3,data3);
-        redrawWithoutAnimation(line4,data4);
-        redrawWithoutAnimation(line5,data5);
-        connection_text_lab7.attr("class","error");
+        lab7dictionary.analogchannels.forEach(function(channel){
+          add_data_to_buffer(lab7dictionary.data[channel],-0.5);
+          redrawWithoutAnimation(lab7dictionary.lines[channel],
+            lab7dictionary.data[channel]);
+          lab7dictionary.lines[channel].classed('disconnected',true);
+        })
+        connection_text_lab7.classed("error",true);
       }
 
     }
