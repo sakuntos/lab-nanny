@@ -15,6 +15,12 @@
   stroke-width: 1.0px;
 }
 
+.line.disconnected{
+  fill: none;
+  stroke: #f00;
+  stroke-width: 1.0px;
+}
+
 .button{
   fill: #000;
   stroke: #000;
@@ -60,11 +66,12 @@
 <body>
 <div id="title" class="title">Lab-nanny v.0.5</div>
 <div id="left_graphs" style="float:left">
-Lab6 <div id="graph0" class="aGraph" style="width:450px;"></div>
-Lab7 <div id="graph1" class="aGraph" style="width:450px;"></div>
-</div>
 <div id="connection_text_lab6" class="text lab6"></div>
+<div id="graph0" class="aGraph" style="width:450px;"></div>
 <div id="connection_text_lab7" class="text lab7"></div>
+<div id="graph1" class="aGraph" style="width:450px;"></div>
+</div>
+
 <div id="toggle_buttons"></div>
 
 <script src="//d3js.org/d3.v4.min.js"></script>
@@ -216,21 +223,15 @@ lab7dictionary.pins.forEach(function(pin){
 //Add data
 lab6dictionary.analogchannels.forEach(function(channel){
   var line_data = d3.range(n).map(function(){return 1;});
+  var my_line = displayGraphExample("#graph0",channel);
   lab6dictionary.data[channel]=line_data;
+  lab6dictionary.lines[channel] = my_line;
 });
 lab7dictionary.analogchannels.forEach(function(channel){
   var line_data = d3.range(n).map(function(){return 1;});
-  lab7dictionary.data[channel]=line_data;
-});
-// Add lines
-lab6dictionary.analogchannels.forEach(function(channel){
-  var my_line = displayGraphExample("#graph0",channel);
-  lab6dictionary.lines[channel] = my_line;
-});
-
-lab7dictionary.analogchannels.forEach(function(channel){
   var my_line = displayGraphExample("#graph1",channel);
-  lab7dictionary.lines[channel] = my_line;
+  lab7dictionary.data[channel]=line_data;
+  lab7dictionary.lines[channel]=my_line;
 });
 
 
@@ -245,6 +246,7 @@ connection.onmessage = function(event) {
           add_data_to_buffer(lab6dictionary.data[channel],newData[channel]);
           redrawWithoutAnimation(lab6dictionary.lines[channel],
             lab6dictionary.data[channel]);
+            lab6dictionary.lines[channel].classed('disconnected',false)
         })
 
         connection_text_lab6.classed("error",false);
@@ -254,6 +256,7 @@ connection.onmessage = function(event) {
             add_data_to_buffer(lab6dictionary.data[channel],-0.5);
             redrawWithoutAnimation(lab6dictionary.lines[channel],
               lab6dictionary.data[channel]);
+            lab6dictionary.lines[channel].classed('disconnected',true)
           })
           connection_text_lab6.classed("error",true);
         }
@@ -264,6 +267,7 @@ connection.onmessage = function(event) {
           add_data_to_buffer(lab7dictionary.data[channel],newData[channel]);
           redrawWithoutAnimation(lab7dictionary.lines[channel],
             lab7dictionary.data[channel]);
+          lab7dictionary.lines[channel].classed('disconnected',false);
         })
         connection_text_lab7.classed("error",false);
       }
@@ -272,6 +276,7 @@ connection.onmessage = function(event) {
           add_data_to_buffer(lab7dictionary.data[channel],-0.5);
           redrawWithoutAnimation(lab7dictionary.lines[channel],
             lab7dictionary.data[channel]);
+          lab7dictionary.lines[channel].classed('disconnected',true);
         })
         connection_text_lab7.classed("error",true);
       }

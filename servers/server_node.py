@@ -73,7 +73,7 @@ class SlaveNode(object):
                 emulation_port=[]
 
             print('(node) Setting-up arduino communications')
-            arduino_serial_comms= SCM.SerialCommManager(0.001,
+            arduino_serial_comms= SCM.SerialCommManager(0.01,
                                                         verbose=self.verbose,
                                                         emulatedPort=emulation_port)
         except SerialException:
@@ -211,6 +211,5 @@ if __name__ == "__main__":
     try:
         tornado.ioloop.IOLoop.instance().run_sync(slaveNodeInstance.keepalive_ws)
     except KeyboardInterrupt:
-        slaveNodeInstance.client.close()
         tornado.ioloop.IOLoop.instance().close()
         print('Exiting gracefully')
