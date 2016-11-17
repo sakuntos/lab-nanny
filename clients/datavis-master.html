@@ -234,34 +234,44 @@ for(var lab in mainObj){
 
 }
 
+function update_lab_state(newData){
+  console.log(newData);
+  if(!newData.error){
+    mainObj[newData.user].analogchannels.forEach(function(channel){
+      add_data_to_buffer(mainObj[newData.user].data[channel],newData[channel]);
+      redrawWithoutAnimation(mainObj[newData.user].lines[channel],
+        mainObj[newData.user].data[channel]);
+        mainObj[newData.user].lines[channel].classed('disconnected',false)
+    })
+
+    mainObj[newData.user].connection_text.classed("error",false);
+    }
+  else{
+    mainObj[newData.user].analogchannels.forEach(function(channel){
+      add_data_to_buffer(mainObj[newData.user].data[channel],-0.5);
+      redrawWithoutAnimation(mainObj[newData.user].lines[channel],
+        mainObj[newData.user].data[channel]);
+        mainObj[newData.user].lines[channel].classed('disconnected',false)
+    })
+
+    mainObj[newData.user].connection_text.classed("error",true);
+  }
+}
 
 connection.onmessage = function(event) {
 
-    var newData = JSON.parse(event.data);
-    // if no error found, update the channels specified in the lab's dict.
+    var newMessage = JSON.parse(event.data);
+    console.log(newMessage);
+    Object.keys(newMessage).forEach(function(lab){
+    update_lab_state(newMessage[lab]);
+    })
+
+
+        // if no error found, update the channels specified in the lab's dict.
     //
     // if newData.error=true, update the channels using the -0.5 value, and
     // change the connection_text style to "error"
-    if(!newData.error){
-      mainObj[newData.user].analogchannels.forEach(function(channel){
-        add_data_to_buffer(mainObj[newData.user].data[channel],newData[channel]);
-        redrawWithoutAnimation(mainObj[newData.user].lines[channel],
-          mainObj[newData.user].data[channel]);
-          mainObj[newData.user].lines[channel].classed('disconnected',false)
-      })
 
-      mainObj[newData.user].connection_text.classed("error",false);
-      }
-    else{
-      mainObj[newData.user].analogchannels.forEach(function(channel){
-        add_data_to_buffer(mainObj[newData.user].data[channel],-0.5);
-        redrawWithoutAnimation(mainObj[newData.user].lines[channel],
-          mainObj[newData.user].data[channel]);
-          mainObj[newData.user].lines[channel].classed('disconnected',false)
-      })
-
-      mainObj[newData.user].connection_text.classed("error",true);
-      }
 
   }
 

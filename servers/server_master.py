@@ -26,13 +26,10 @@
 #Initially: In each "tick" we poll the different nodes and send data to the connected devices.
 #!/usr/bin/python
 
-import datetime
 import tornado.httpserver
 import tornado.websocket
 import tornado.ioloop as ioloop
 import tornado.web
-from tornado.concurrent import run_on_executor
-import time
 
 import uuid
 import socket
@@ -43,15 +40,15 @@ SLAVE_SOCKETNAME = r'/nodes_ws'
 CLIENT_SOCKETPORT = 8008
 CLIENT_SOCKETNAME = r'/client_ws'
 
-PERIODICITY = 100
+PERIODICITY = 200
 DB_PERIODICITY = 30000
 
 class MasterServer(object):
     def __init__(self, slave_socketname = SLAVE_SOCKETNAME,
-                 socket_port = SLAVE_SOCKETPORT,
-                 client_socketport = CLIENT_SOCKETPORT,
-                 client_socketname = CLIENT_SOCKETNAME,
-                 periodicity = PERIODICITY):
+                 socket_port=SLAVE_SOCKETPORT,
+                 client_socketport=CLIENT_SOCKETPORT,
+                 client_socketname=CLIENT_SOCKETNAME,
+                 periodicity=PERIODICITY):
 
         self.socket_port=socket_port
         self.slave_socketname = slave_socketname
@@ -63,7 +60,7 @@ class MasterServer(object):
         self.run()
 
     def run(self):
-        self.application = tornado.web.Application([(self.slave_socketname, SlaveNodeHandler,{'comms_handler':self.comms_handler}),
+        self.application = tornado.web.Application([(self.slave_socketname, NodeHandler, {'comms_handler':self.comms_handler}),
                                            (self.client_socketname, ClientHandler,{'comms_handler':self.comms_handler})])
         self.application.listen(self.socket_port)
         print('Two connections created:')
@@ -75,7 +72,7 @@ class MasterServer(object):
                                                        self.socket_port,
                                                        self.slave_socketname,
                                                        socket.gethostbyname(socket.gethostname())))
-        self.callback= ioloop.PeriodicCallback(self.comms_handler.broadcast_to_slaves,self.callback_periodicity)
+        self.callback= ioloop.PeriodicCallback(self.tick, self.callback_periodicity)
         self.callback.start()
         print('starting ioloop')
         #dbcallback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
@@ -87,11 +84,24 @@ class MasterServer(object):
             ioloop.IOLoop.instance().stop()
             print('Exiting gracefully...')
 
+    def tick(self):
+    #In case we want to exit, we send a KeyboardInterrupt
+        try:
+            for jj, client in enumerate(self.comms_handler.clients):
+                client.write_message(self.comms_handler.last_data)
+            msg = 'X,50,0'  #Write a command that causes "no harm", i.e. we don't actually use. The 'X' ensures that all nodes reply
+            #We write to all the clients, but only the right user will actually generate output
+            # TODO: should only send data to the right connection, instead of relying on the nodes to check whether the message is for them?
+            for ii, node in enumerate(self.comms_handler.nodes):
+                node.write_message(msg)
+        except KeyboardInterrupt:
+            raise
 
-class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
-    slave_nodes = []
 
-    def initialize(self, comms_handler):
+class NodeHandler(tornado.websocket.WebSocketHandler):
+    nodes = []
+
+    def initialize(self, comms_handler,verbose=True):
         """
         :param comms_handler:
         :type comms_handler: CommsHandler
@@ -99,51 +109,61 @@ class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
         """
         """Store a reference to the communications handler"""
         self.__comms_handler = comms_handler
+        self.verbose = verbose
 
     def open(self):
         # We could do here the configuration of the node, like a dictionary with the channels exposed
 
         #self.write_message('Init')
 
-        SlaveNodeHandler.slave_nodes.append(self)
-        self.id = uuid.uuid4()
-        print('new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(SlaveNodeHandler.slave_nodes)))
+        NodeHandler.nodes.append(self)
+        self.id = uuid.uuid4().hex
+        print('new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(NodeHandler.nodes)))
         print('UUID: {}'.format(self.id))
 
     def on_message(self, message): #From the Node
-
+        #Creating the message dict is only necessary if verbose
         message_dict = json.loads(message)
-        if message_dict['error']==False:
-            print('time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'.format(message_dict["x"],
-                                                                  message_dict["user"],
-                                                                  message_dict["error"],
-                                                                  message_dict["ch0"]))
-        else:
-            print('time: {0:.3f}, user: {1}, error: {2}'.format(message_dict["x"],
-                                                                  message_dict["user"],
-                                                                  message_dict["error"]))
+        if self.verbose:
+
+            if message_dict['error']==False:
+                print('time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'.format(message_dict["x"],
+                                                                              message_dict["user"],
+                                                                              message_dict["error"],
+                                                                              message_dict["ch0"]))
+            else:
+                print('time: {0:.3f}, user: {1}, error: {2}'.format(message_dict["x"],
+                                                                    message_dict["user"],
+                                                                    message_dict["error"]))
 
         # If we do this, we send a message to the clients for each reading. Maybe it will be slow
-        for client in self.__comms_handler.clients:
-            client.write_message(message)
+        self.__comms_handler.last_data[self.id] = message_dict
+        #for client in self.__comms_handler.clients:
+        #    client.write_message(message)
+
+
 
     def on_close(self):
         print('connection closed')
-        SlaveNodeHandler.slave_nodes.remove(self)
+        self.__comms_handler.remove_key(self.id)
+        NodeHandler.nodes.remove(self)
 
     def check_origin(self, origin):
         #TODO: change this to actually check the origin
         return True
 
-    @classmethod
-    def broadcast_to_slave_nodes(cls):
+    def broadcast_to_nodes(self):
+        #In case we want to exit, we send a KeyboardInterrupt
         try:
+            for jj, client in enumerate(self.__comms_handler.clients):
+                client.write_message(self.__comms_handler.last_data)
             msg = 'X,50,0'  #Write a command that causes "no harm", i.e. we don't actually use. The 'X' ensures that all nodes reply
-
             #We write to all the clients, but only the right user will actually generate output
             # TODO: should only send data to the right connection, instead of relying on the nodes to check whether the message is for them?
-            for ii, client in enumerate(cls.slave_nodes):
-                client.write_message(msg)
+            for ii, node in enumerate(self.__comms_handler.nodes):
+                node.write_message(msg)
+
+
         except KeyboardInterrupt:
             raise
 
@@ -167,7 +187,7 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
 
     def on_message(self, message): #From the Node
         print('message received from client: {}'.format(message))
-        for node in self.__comms_handler.server_nodes:
+        for node in self.__comms_handler.nodes:
             node.write_message(message)
 
 
@@ -181,11 +201,13 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
 
 class CommsHandler(object):
     def __init__(self):
-        self.server_nodes =SlaveNodeHandler.slave_nodes
+        self.nodes =NodeHandler.nodes
         self.clients=ClientHandler.client_list
+        self.last_data={}
 
-    def broadcast_to_slaves(self):
-        SlaveNodeHandler.broadcast_to_slave_nodes()
+    def remove_key(self,id):
+        self.last_data.pop(id,None)
+
 
 
 
