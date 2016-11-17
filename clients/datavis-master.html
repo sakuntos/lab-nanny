@@ -81,16 +81,20 @@
 var n = 1000,
     periodicity=0.1,
     random = d3.randomNormal(0, .2),
-    data3 = d3.range(n).map(function(){return 1;}),
-    data4 = d3.range(n).map(function(){return 1;}),
-    data5 = d3.range(n).map(function(){return 1;}),
     width = 400,
     height=50,
     margin = {top:0, right: 0, bottom: 20, left: 0},
     lab6dictionary={name:"lab6",pins:[11,13,17],analogchannels:["ch0","ch2"],
-    data:{}, lines:{}, buttons:[]},
-    lab7dictionary={name:"lab7",pins:[11,13,17,25],analogchannels:["ch0","ch1","ch2"],
-    data:{}, lines:{}, buttons:[]};
+    data:{}, lines:{}, buttons:[],connection_text:[],
+    graph_area:"#graph0",connection_text_area:"#connection_text_lab6"},
+    lab7dictionary={name:"lab7",pins:[13,17,25],analogchannels:["ch0","ch2"],
+    data:{}, lines:{}, buttons:[],connection_text:[],
+    graph_area:"#graph1",connection_text_area:"#connection_text_lab7"},
+    mainObj = {};
+
+mainObj[lab6dictionary.name]=lab6dictionary;
+mainObj[lab7dictionary.name]=lab7dictionary;
+
 
 
 function sleep (time) {
@@ -99,14 +103,7 @@ function sleep (time) {
 
 var connection = new WebSocket('ws://localhost:8001/client_ws');
 //var connection = new WebSocket('ws://10.3.20.25:8001/ArduMon1');
-var connection_text_lab6 = d3.select("#connection_text_lab6")
-        .classed("error",true)
-        .classed("connectionText",true)
-        .text('Lab6 connected');
-var connection_text_lab7 = d3.select("#connection_text_lab7")
-        .classed("error",true)
-        .classed("connectionText",true)
-        .text('Lab7 connected');
+
 
 var x = d3.scaleLinear()
     .domain([0, n - 1])
@@ -209,79 +206,63 @@ function add_data_to_buffer(buffer, data){
   return buffer;
 }
 
+//
+// MAIN CONSTRUCTOR:
+//
 
-// Add buttons
-lab6dictionary.pins.forEach(function(pin){
-  var my_button = makeButton(lab6dictionary.name,pin,"#toggle_buttons");
-  lab6dictionary.buttons.push(my_button);
-});
-lab7dictionary.pins.forEach(function(pin){
-  var my_button = makeButton(lab7dictionary.name,pin,"#toggle_buttons");
-  lab7dictionary.buttons.push(my_button);
-});
+// For each lab input
+for(var lab in mainObj){
+  //Create connection text
+  mainObj[lab].connection_text = d3.select(mainObj[lab].connection_text_area)
+          .classed("error",true)
+          .classed("connectionText",true)
+          .text(lab+ ' connected');
+  //Create the buttons specified in the "pins" property and add it to the
+  //"buttons" list
+  mainObj[lab].pins.forEach(function(pin){
+  var my_button = makeButton(mainObj[lab].name,pin,"#toggle_buttons");
+  mainObj[lab].buttons.push(my_button);
+  });
+  // Also, for each channel, associate to it some line data (initialized to a
+  // default value) and plot it in a certain "graph_area".
+  mainObj[lab].analogchannels.forEach(function(channel){
+  var line_data = d3.range(n).map(function(){return 1;}); //Default values
+  var my_line = displayGraphExample(mainObj[lab].graph_area,channel);
+  mainObj[lab].data[channel]=line_data;
+  mainObj[lab].lines[channel] = my_line;
+  });
 
-//Add data
-lab6dictionary.analogchannels.forEach(function(channel){
-  var line_data = d3.range(n).map(function(){return 1;});
-  var my_line = displayGraphExample("#graph0",channel);
-  lab6dictionary.data[channel]=line_data;
-  lab6dictionary.lines[channel] = my_line;
-});
-lab7dictionary.analogchannels.forEach(function(channel){
-  var line_data = d3.range(n).map(function(){return 1;});
-  var my_line = displayGraphExample("#graph1",channel);
-  lab7dictionary.data[channel]=line_data;
-  lab7dictionary.lines[channel]=my_line;
-});
+}
 
 
 connection.onmessage = function(event) {
 
     var newData = JSON.parse(event.data);
-    // if no error found, update data points and redraw
+    // if no error found, update the channels specified in the lab's dict.
+    //
+    // if newData.error=true, update the channels using the -0.5 value, and
+    // change the connection_text style to "error"
+    if(!newData.error){
+      mainObj[newData.user].analogchannels.forEach(function(channel){
+        add_data_to_buffer(mainObj[newData.user].data[channel],newData[channel]);
+        redrawWithoutAnimation(mainObj[newData.user].lines[channel],
+          mainObj[newData.user].data[channel]);
+          mainObj[newData.user].lines[channel].classed('disconnected',false)
+      })
 
-    if(newData.user=="lab6"){
-      if(!newData.error){
-        lab6dictionary.analogchannels.forEach(function(channel){
-          add_data_to_buffer(lab6dictionary.data[channel],newData[channel]);
-          redrawWithoutAnimation(lab6dictionary.lines[channel],
-            lab6dictionary.data[channel]);
-            lab6dictionary.lines[channel].classed('disconnected',false)
-        })
-
-        connection_text_lab6.classed("error",false);
-        }
-        else{
-          lab6dictionary.analogchannels.forEach(function(channel){
-            add_data_to_buffer(lab6dictionary.data[channel],-0.5);
-            redrawWithoutAnimation(lab6dictionary.lines[channel],
-              lab6dictionary.data[channel]);
-            lab6dictionary.lines[channel].classed('disconnected',true)
-          })
-          connection_text_lab6.classed("error",true);
-        }
-    }
-    if(newData.user=="lab7"){
-      if(!newData.error){
-        lab7dictionary.analogchannels.forEach(function(channel){
-          add_data_to_buffer(lab7dictionary.data[channel],newData[channel]);
-          redrawWithoutAnimation(lab7dictionary.lines[channel],
-            lab7dictionary.data[channel]);
-          lab7dictionary.lines[channel].classed('disconnected',false);
-        })
-        connection_text_lab7.classed("error",false);
+      mainObj[newData.user].connection_text.classed("error",false);
       }
-      else{
-        lab7dictionary.analogchannels.forEach(function(channel){
-          add_data_to_buffer(lab7dictionary.data[channel],-0.5);
-          redrawWithoutAnimation(lab7dictionary.lines[channel],
-            lab7dictionary.data[channel]);
-          lab7dictionary.lines[channel].classed('disconnected',true);
-        })
-        connection_text_lab7.classed("error",true);
+    else{
+      mainObj[newData.user].analogchannels.forEach(function(channel){
+        add_data_to_buffer(mainObj[newData.user].data[channel],-0.5);
+        redrawWithoutAnimation(mainObj[newData.user].lines[channel],
+          mainObj[newData.user].data[channel]);
+          mainObj[newData.user].lines[channel].classed('disconnected',false)
+      })
+
+      mainObj[newData.user].connection_text.classed("error",true);
       }
 
-    }
   }
 
 </script>

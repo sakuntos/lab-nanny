@@ -4,6 +4,14 @@
 -The server needs to cope with connection loss (from any segment)
 - Also, the server can save the data at intervals using mysql.
 
+# Notes about synchronized node response synchronization
+It should be relatively simple:
+- create external queue to hold responses from nodes
+- on_message(from node): append received message to an external queue
+- (in periodic callback): send contents of the queue to all of the clients.
+
+We may run into access locking conditions, thus we may need to implement semaphores or something similar.
+
 
 ## Some sources:
 Connection: http://www.benjaminmbrown.com/2016/02/tutorial-how-to-build-real-time-data-visualization-with-d3-crossfilter-and-websockets-in-python-by-example/
