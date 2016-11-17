@@ -46,6 +46,48 @@ CLIENT_SOCKETNAME = r'/client_ws'
 PERIODICITY = 100
 DB_PERIODICITY = 30000
 
+class MasterServer(object):
+    def __init__(self, slave_socketname = SLAVE_SOCKETNAME,
+                 socket_port = SLAVE_SOCKETPORT,
+                 client_socketport = CLIENT_SOCKETPORT,
+                 client_socketname = CLIENT_SOCKETNAME,
+                 periodicity = PERIODICITY):
+
+        self.socket_port=socket_port
+        self.slave_socketname = slave_socketname
+        self.client_socketname = client_socketname
+        self.client_socketport = client_socketport
+        self.callback_periodicity = periodicity
+        self.comms_handler = CommsHandler()
+        self.last_messages = []
+        self.run()
+
+    def run(self):
+        self.application = tornado.web.Application([(self.slave_socketname, SlaveNodeHandler,{'comms_handler':self.comms_handler}),
+                                           (self.client_socketname, ClientHandler,{'comms_handler':self.comms_handler})])
+        self.application.listen(self.socket_port)
+        print('Two connections created:')
+        print('-Client WS EST @ {}:{}{},  ({})'.format(socket.getfqdn(),
+                                                       self.client_socketport,
+                                                       self.client_socketname,
+                                                       socket.gethostbyname(socket.gethostname())))
+        print('-Nodes WS EST  @ {}:{}{},  ({})'.format(socket.getfqdn(),
+                                                       self.socket_port,
+                                                       self.slave_socketname,
+                                                       socket.gethostbyname(socket.gethostname())))
+        self.callback= ioloop.PeriodicCallback(self.comms_handler.broadcast_to_slaves,self.callback_periodicity)
+        self.callback.start()
+        print('starting ioloop')
+        #dbcallback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
+        #dbcallback.start()
+
+        try:
+            ioloop.IOLoop.instance().start()
+        except KeyboardInterrupt:
+            ioloop.IOLoop.instance().stop()
+            print('Exiting gracefully...')
+
+
 class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
     slave_nodes = []
 
@@ -67,8 +109,6 @@ class SlaveNodeHandler(tornado.websocket.WebSocketHandler):
         self.id = uuid.uuid4()
         print('new connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(SlaveNodeHandler.slave_nodes)))
         print('UUID: {}'.format(self.id))
-
-
 
     def on_message(self, message): #From the Node
 
@@ -148,26 +188,9 @@ class CommsHandler(object):
         SlaveNodeHandler.broadcast_to_slave_nodes()
 
 
+
+def main1():
+    my_master_server = MasterServer()
+
 if __name__ == "__main__":
-    comms_handler = CommsHandler()
-    application = tornado.web.Application([(SLAVE_SOCKETNAME, SlaveNodeHandler,{'comms_handler':comms_handler}),
-                                           (CLIENT_SOCKETNAME, ClientHandler,{'comms_handler':comms_handler})])
-    application.listen(SLAVE_SOCKETPORT)
-
-    print('Two connections created:')
-    print('-Client WS EST @ {}:{}{},  ({})'.format(socket.getfqdn(),
-                                                     CLIENT_SOCKETPORT, CLIENT_SOCKETNAME,socket.gethostbyname(socket.gethostname())))
-    print('-Nodes WS EST  @ {}:{}{},  ({})'.format(socket.getfqdn(),
-                                                     SLAVE_SOCKETPORT, SLAVE_SOCKETNAME,socket.gethostbyname(socket.gethostname())))
-
-    callback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
-    callback.start()
-
-    #dbcallback= ioloop.PeriodicCallback(comms_handler.broadcast_to_slaves,PERIODICITY)
-    #dbcallback.start()
-    print('starting ioloop')
-    try:
-        ioloop.IOLoop.instance().start()
-    except KeyboardInterrupt:
-        ioloop.IOLoop.instance().stop()
-        print('Exiting gracefully...')
+    main1()
