@@ -1,3 +1,7 @@
+# Slave nodes for lab-nanny
+#
+# Communicates with arduino using a serial connection and connects with the master server through websockets.
+
 #!/usr/bin/python
 import tornado
 import tornado.websocket
@@ -7,12 +11,9 @@ from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
 from communications.SerialCommManager import write_handshake
 
-import sys
 import json
 import time
 import socket
-import logging
-
 
 import argparse
 
@@ -20,8 +21,7 @@ USER_REFERENCE = 'lab6'
 EMULATE = True
 VERBOSE = True
 ADC_MAXINT = 4095
-ADC_MAXVOLT = 3.3
-
+ADC_MAXVOLT = 3.3   #For conversion of the analog readings
 
 
 LOCATION = "ws://localhost:8001/nodes_ws" #10.3.20.25
@@ -88,29 +88,37 @@ class SlaveNode(object):
         # - Convert to arduino command
         # - Connect to arduino using the command
         # - Receive data from arduino and send back to master
-        errorState = False # Initialises the error state
-        try:
-            client = yield tornado.websocket.websocket_connect(self.location)
-            print('(node) waiting for messages:')
+        errorState = True # Initialises the error state
 
-        except socket.error as error:
-            if error.errno == 10061:
-                print('\nConnection refused by host. Maybe it is not running?')
-                raise KeyboardInterrupt
+        while errorState:
+            try:
+                client = yield tornado.websocket.websocket_connect(self.location)
+                errorState = False
+                print('(node) waiting for messages:')
+
+            except socket.error as error:
+                if error.errno == 10061:
+                    print('\nConnection refused by host. Maybe it is not running?Waiting')
+                    time.sleep(3)
+                    raise KeyboardInterrupt
 
         while not errorState:
             try:
-                msg = yield client.read_message()
+                msg = yield client.read_message() #we may use a callback here, instead of the rest of this code block
             except UnboundLocalError:
                 print('\nConnection refused by host. Maybe it is not running?')
+                raise KeyboardInterrupt
+
+            if msg is None:
+                errorStte = True
                 raise KeyboardInterrupt
 
             user, pinValue, pinNumber = convert_message_to_command(msg)
             #Check if the message is for this node
             if user in (self.reference,'X'):
                 if self.verbose:
-                    print("(node) incoming msg is: {}".format(msg))
-                    print("(node) command to arduino: {}".format(pinNumber))
+                    print("(node) Incoming msg is: {}".format(msg))
+                    print("(node) CMD to arduino:  {}".format(pinNumber))
                 #This "try" block will look for KeyboardInterrupt events to close the program
                 try:
                     t, channels = arduino_serial_comms.poll_arduino(
@@ -128,8 +136,12 @@ class SlaveNode(object):
                         'user':self.reference,
                         'error':True
                     }
-                    print('Serial Exception')
+                    print('(node) Serial Exception @{}'.format(time.time()))
                     client.write_message(json.dumps(point_data))
+                except KeyboardInterrupt:
+                    errorState=True
+                    raise
+        yield True
 
     def convert_data(self,list_of_data):
         """Converts data from arduino to a value in volts.
@@ -139,11 +151,13 @@ class SlaveNode(object):
 
         Typically, the list of data
 
+        :param list_of_data: typically a list with values 0-(2^12-1) for a number of analog channels
+
         """
         list_of_data = [round(datum[0]*ADC_MAXVOLT/ADC_MAXINT,5) for datum in list_of_data]
         point_data =  {
-            'user':self.reference,
-            'error':False,   #Distinguishes it from the error state
+            'user': self.reference,
+            'error': False,   #Distinguishes it from the error state
             'ch0': list_of_data[0],
             'ch1' : list_of_data[1],
             'ch2' : list_of_data[2],
@@ -169,7 +183,6 @@ def convert_message_to_command(message):
     """
 
     split_message = message.split(',')
-    print(message)
     pinValue = int(split_message[2]) # split_message[1] in ('True','true')
     user = split_message[0]
 
@@ -211,5 +224,6 @@ if __name__ == "__main__":
     try:
         tornado.ioloop.IOLoop.instance().run_sync(slaveNodeInstance.keepalive_ws)
     except KeyboardInterrupt:
+        tornado.ioloop.IOLoop.instance().stop()
         tornado.ioloop.IOLoop.instance().close()
         print('Exiting gracefully')

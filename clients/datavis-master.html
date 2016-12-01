@@ -78,28 +78,35 @@
 <script>
 // n     = number of points
 // dataX = data holder for the X channel
-var n = 1000,
-    periodicity=0.1,
-    random = d3.randomNormal(0, .2),
-    width = 400,
-    height=50,
+var n           = 1000,
+    periodicity = 0.1,
+    random      = d3.randomNormal(0, .2),
+    width       = 400,
+    height      = 50,
     margin = {top:0, right: 0, bottom: 20, left: 0},
-    lab6dictionary={name:"lab6",pins:[11,13,17],analogchannels:["ch0","ch2"],
-    data:{}, lines:{}, buttons:[],connection_text:[],
-    graph_area:"#graph0",connection_text_area:"#connection_text_lab6"},
-    lab7dictionary={name:"lab7",pins:[13,17,25],analogchannels:["ch0","ch2"],
-    data:{}, lines:{}, buttons:[],connection_text:[],
-    graph_area:"#graph1",connection_text_area:"#connection_text_lab7"},
+    lab6dictionary = {name:"lab6",
+                      pins:[11,13,17],
+                      analogchannels:["ch0","ch1","ch2","ch3","ch4","ch5"],
+                      data:{},
+                      lines:{},
+                      buttons:[],
+                      connection_text:[],
+                      graph_area:"#graph0",
+                      connection_text_area:"#connection_text_lab6"},
+    lab7dictionary = {name:"lab7",
+                      pins:[13,17,25],
+                      analogchannels:["ch0","ch2"],
+                      data:{},
+                      lines:{},
+                      buttons:[],
+                      connection_text:[],
+                      graph_area:"#graph1",
+                      connection_text_area:"#connection_text_lab7"},
     mainObj = {};
 
 mainObj[lab6dictionary.name]=lab6dictionary;
 mainObj[lab7dictionary.name]=lab7dictionary;
 
-
-
-function sleep (time) {
-  return new Promise((resolve) => setTimeout(resolve, time));
-}
 
 var connection = new WebSocket('ws://localhost:8001/client_ws');
 //var connection = new WebSocket('ws://10.3.20.25:8001/ArduMon1');
@@ -127,13 +134,13 @@ var line = d3.line()
 
 
 
-function send_data_back(lab,number,state){
-  var message =  [lab,number,state];
+function send_data_back(ref,number,state){
+  var message =  [ref,number,state];
   connection.send(message);
   return state
  }
 
-function makeButton(lab,pinNumber, containerID){
+function makeButton(ref,pinNumber, containerID){
    var buttonSVG = d3.select(containerID).append("svg:svg")
    .attr("width", 30)
    .attr("height", 60);
@@ -146,14 +153,15 @@ function makeButton(lab,pinNumber, containerID){
           .attr("height",20)
           .attr("class","button")
           .classed("disabled",true)
-          .classed(lab,true)
+          .classed(ref,true)
           .attr("pinNumber",pinNumber)
           .on("click", function() {
             var AmIOn = d3.select(this).classed("disabled");
             d3.select(this).classed("disabled",AmIOn ? false : true);
 
             // Verbose output
-            console.log(send_data_back(lab,pinNumber,+AmIOn));
+            //console.log( );
+            send_data_back(ref,pinNumber,+AmIOn);//);
    });
    var myText = buttonSVG.append("text")
           .attr("x",5)
@@ -210,64 +218,66 @@ function add_data_to_buffer(buffer, data){
 // MAIN CONSTRUCTOR:
 //
 
-// For each lab input
-for(var lab in mainObj){
+// For each ref input
+for(var ref in mainObj){
   //Create connection text
-  mainObj[lab].connection_text = d3.select(mainObj[lab].connection_text_area)
+  mainObj[ref].connection_text = d3.select(mainObj[ref].connection_text_area)
           .classed("error",true)
           .classed("connectionText",true)
-          .text(lab+ ' connected');
+          .text(ref+ ' connected');
   //Create the buttons specified in the "pins" property and add it to the
   //"buttons" list
-  mainObj[lab].pins.forEach(function(pin){
-  var my_button = makeButton(mainObj[lab].name,pin,"#toggle_buttons");
-  mainObj[lab].buttons.push(my_button);
+  mainObj[ref].pins.forEach(function(pin){
+  var my_button = makeButton(mainObj[ref].name,pin,"#toggle_buttons");
+  mainObj[ref].buttons.push(my_button);
   });
   // Also, for each channel, associate to it some line data (initialized to a
   // default value) and plot it in a certain "graph_area".
-  mainObj[lab].analogchannels.forEach(function(channel){
+  mainObj[ref].analogchannels.forEach(function(channel){
   var line_data = d3.range(n).map(function(){return 1;}); //Default values
-  var my_line = displayGraphExample(mainObj[lab].graph_area,channel);
-  mainObj[lab].data[channel]=line_data;
-  mainObj[lab].lines[channel] = my_line;
+  var my_line = displayGraphExample(mainObj[ref].graph_area,channel);
+  mainObj[ref].data[channel]=line_data;
+  mainObj[ref].lines[channel] = my_line;
   });
 
 }
 
 function update_lab_state(newData){
-  console.log(newData);
+  //verbose output
+  //console.log(newData);
+  var user = newData.user
+
   if(!newData.error){
-    mainObj[newData.user].analogchannels.forEach(function(channel){
-      add_data_to_buffer(mainObj[newData.user].data[channel],newData[channel]);
-      redrawWithoutAnimation(mainObj[newData.user].lines[channel],
-        mainObj[newData.user].data[channel]);
-        mainObj[newData.user].lines[channel].classed('disconnected',false)
+    var user = newData.user
+    mainObj[user].analogchannels.forEach(function(channel){
+      add_data_to_buffer(mainObj[user].data[channel],newData[channel]);
+      redrawWithoutAnimation(mainObj[user].lines[channel],
+                              mainObj[user].data[channel]);
+        mainObj[user].lines[channel].classed('disconnected',false)
     })
 
-    mainObj[newData.user].connection_text.classed("error",false);
+    mainObj[user].connection_text.classed("error",false);
     }
   else{
-    mainObj[newData.user].analogchannels.forEach(function(channel){
-      add_data_to_buffer(mainObj[newData.user].data[channel],-0.5);
-      redrawWithoutAnimation(mainObj[newData.user].lines[channel],
-        mainObj[newData.user].data[channel]);
+    mainObj[user].analogchannels.forEach(function(channel){
+      add_data_to_buffer(mainObj[user].data[channel],-0.5);
+      redrawWithoutAnimation(mainObj[user].lines[channel],
+                              mainObj[user].data[channel]);
         mainObj[newData.user].lines[channel].classed('disconnected',false)
     })
 
-    mainObj[newData.user].connection_text.classed("error",true);
+    mainObj[user].connection_text.classed("error",true);
   }
 }
 
 connection.onmessage = function(event) {
 
     var newMessage = JSON.parse(event.data);
-    console.log(newMessage);
+    //verbose output: // console.log(newMessage);
     Object.keys(newMessage).forEach(function(lab){
     update_lab_state(newMessage[lab]);
     })
-
-
-        // if no error found, update the channels specified in the lab's dict.
+    // if no error found, update the channels specified in the lab's dict.
     //
     // if newData.error=true, update the channels using the -0.5 value, and
     // change the connection_text style to "error"

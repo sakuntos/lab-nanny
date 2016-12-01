@@ -21,7 +21,10 @@ NUM_CHANNELS = 9 # number of total channels (time axis + ADC channels 0-7)
 DATA_LEN = 1 # numbers in each array that serial.print does in arduino
 
 def standard_handshake(serialinst,verbose=False):
-    """ Send/receive char to synchronize data gathering """
+    """ Send/receive char to synchronize data gathering
+
+
+    """
     nbytes = serialinst.write("z") # can write anything here, just a single byte (any ASCII char)
     if verbose:
         print('(std) Wrote bytes to serial port: ', nbytes)
@@ -59,31 +62,32 @@ class SerialCommManager:
         self.recording_time = recording_time
         self.verbose = verbose
         self.time_axis = None
-        # Obtain the id of the first port to use "arduino" as ID.
-        if emulatedPort:
-            port=emulatedPort
-            self.connection_settings={
-                'port':port,
+
+        # Common connection_settings
+        self.connection_settings={
                 'baudrate':115200,
-                'rtscts':True,
-                'dsrdtr':True,
                 'bytesize':serial.EIGHTBITS,
                 'stopbits':serial.STOPBITS_ONE,
                 'parity':serial.PARITY_NONE,
                 'timeout':self.recording_time}
+        if emulatedPort:
+            port=emulatedPort
+            self.connection_settings['rtscts'] = True
+            self.connection_settings['dsrdtr'] = True
+            self.connection_settings['port'] = port
 
         else:
             port = self.get_arduino_port()
             print('Trying port: {}'.format(port))
-            self.connection_settings= {
-                'port':port,
-                'baudrate':115200,
-                'parity':serial.PARITY_NONE,
-                'stopbits':serial.STOPBITS_ONE,
-                'bytesize':serial.EIGHTBITS,
-                'timeout':self.recording_time}
+            self.connection_settings['port'] = port
 
     def get_arduino_port(self):
+        """ Obtain the serial port being used by arduino using the "port_grep" function
+
+        Note: if you have more than one arduino connected to the computer, it will only take the first one.
+
+        :return:
+        """
         myPort_generator = port_grep('arduino')
         try:
             firstPort = myPort_generator.next()  # .__next__() # for python3
@@ -97,9 +101,7 @@ class SerialCommManager:
 
     	Convert the bytestream into numpy arrays for each channel
 
-
     	Returns:
-
     		(NUM_CHANNELS+1) numpy arrays (1D) representing time and ADC channels 0-5
 
 	    """
@@ -147,8 +149,6 @@ class SerialCommManager:
             #    raise serial.SerialException
 
 
-
-
     def connect_to_server(self):
         """ Open a serial connection with the arduino.
 
@@ -158,20 +158,17 @@ class SerialCommManager:
         #     port ='/dev/cu.usbmodemfa131',
         #     #port='COM6',   #look in the arduino software
 
-
     def cleanup(self):
         self.ser.close()
-
-
 
 
 def main():
     fetcher = SerialCommManager(0.001, verbose=False)
     pinNumber = chr(14)
     dataList = fetcher.poll_arduino(handshake_func=write_handshake,
-                                       command=pinNumber)
+                                    command=pinNumber)
 
-    pass
+    return True
 
 
 

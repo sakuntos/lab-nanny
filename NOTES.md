@@ -4,7 +4,7 @@
 -The server needs to cope with connection loss (from any segment)
 - Also, the server can save the data at intervals using mysql.
 
-# Notes about synchronized node response synchronization
+## Notes about synchronized node response synchronization
 It should be relatively simple:
 - create external queue to hold responses from nodes
 - on_message(from node): append received message to an external queue
