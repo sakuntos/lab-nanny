@@ -78,7 +78,7 @@ class SerialCommManager:
 
         else:
             port = self.get_arduino_port()
-            print('Trying port: {}'.format(port))
+            print('(SCM) Trying port: {}'.format(port))
             self.connection_settings['port'] = port
 
     def get_arduino_port(self):
@@ -128,8 +128,8 @@ class SerialCommManager:
                     ##PROCESS
                     et = time.clock() - st
                     if self.verbose:
-                        print('------------------------\n INIT POLLING ARDUINO:\n------------------------')
-                        print('Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
+                        print('(SCM) ------------------------\n INIT POLLING ARDUINO:\n------------------------')
+                        print('(SCM) Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
 
                     #make string into list of strings, comma separated
                     data_list = data.split(',')
@@ -145,11 +145,11 @@ class SerialCommManager:
                         self.time_axis = data_array_3d[0]
                         self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
                     if self.verbose:
-                        print('Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st))
+                        print('(SCM) Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st))
 
                     return self.time_axis, [channel for channel in self.channels]
 
-        except ValueError as err:    #If the
+        except ValueError as err:    #If the cable gets disconnected
             raise SerialConnectionException
         except TypeError as err:  #If disconnected it may not get a data point
             print(err.args)
@@ -186,7 +186,7 @@ def main():
         return True
     except Exception as err: #If the arduino is not connected
         print(err.args)
-        print('Arduino not connected: please, connect the arduino and try running the node script again.')
+        print('(SCM) Arduino not connected: please, connect the arduino and try running the node script again.')
 
 
 
