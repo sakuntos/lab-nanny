@@ -72,6 +72,8 @@ class WebSocketHandler(websocket.WebSocketHandler):
         To indicate a HIGH pin, add the pin number to 65.
         To indicate a LOW pin, subtract the pin number to 65, minus one.
         This is to distinguish between +0 and -0.
+
+        :param message: message received
         """
         split_message = message.split(',')
         pinValue = int(split_message[1])
