@@ -183,6 +183,7 @@ class SlaveNode(object):
 
         """
         list_of_data = [round(datum[0]*ADC_MAXVOLT/ADC_MAXINT,5) for datum in list_of_data]
+        list_of_data[0] = list_of_data[0]*100  #Temperature conversion
         point_data =  {
             'user': self.reference,
             'error': False,   #Distinguishes it from the error state
@@ -279,6 +280,5 @@ if __name__ == "__main__":
             tornado.ioloop.IOLoop.instance().close()
             print('(node) Exiting gracefully')
             break
-
 
         time.sleep(2)

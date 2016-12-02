@@ -83,29 +83,7 @@ var n           = 1000,
     random      = d3.randomNormal(0, .2),
     width       = 400,
     height      = 50,
-    margin = {top:0, right: 0, bottom: 20, left: 0},
-    lab6dictionary = {name:"lab6",
-                      pins:[11,13,17],
-                      analogchannels:["ch0","ch1","ch2","ch3","ch4","ch5"],
-                      data:{},
-                      lines:{},
-                      buttons:[],
-                      connection_text:[],
-                      graph_area:"#graph0",
-                      connection_text_area:"#connection_text_lab6"},
-    lab7dictionary = {name:"lab7",
-                      pins:[13,17,25],
-                      analogchannels:["ch0","ch2"],
-                      data:{},
-                      lines:{},
-                      buttons:[],
-                      connection_text:[],
-                      graph_area:"#graph1",
-                      connection_text_area:"#connection_text_lab7"},
-    mainObj = {};
-
-mainObj[lab6dictionary.name]=lab6dictionary;
-mainObj[lab7dictionary.name]=lab7dictionary;
+    margin = {top:0, right: 0, bottom: 20, left: 0};
 
 
 var connection = new WebSocket('ws://localhost:8001/client_ws');
@@ -117,6 +95,10 @@ var x = d3.scaleLinear()
     .range([0, width-margin.right-margin.left]);
 var y = d3.scaleLinear()
     .domain([0, 3.3])
+    .range([height-margin.top-margin.bottom, 0]);
+
+var y_temp = d3.scaleLinear()
+    .domain([20, 26])
     .range([height-margin.top-margin.bottom, 0]);
 
 var line = d3.line()
@@ -131,6 +113,43 @@ var line = d3.line()
             // return the Y coordinate where we want to plot this datapoint
             return y(d);
         });
+var temp_line = d3.line()
+        // assign the X function to plot our line as we wish
+        .x(function(d,i) {
+            // verbose logging to show what's actually being done
+            //console.log('Plotting X value for data point: ' + d + ' using index: ' + i + ' to be at: ' + x(i) + ' using our xScale.');
+            // return the X coordinate where we want to plot this datapoint
+            return x(i);
+        })
+        .y(function(d) {
+            // return the Y coordinate where we want to plot this datapoint
+            return y_temp(d);
+        });
+
+var     lab6dictionary = {name:"lab6",
+                          pins:[11,13,17],
+                          analogchannels:["ch0","ch1","ch2","ch3","ch4","ch5"],
+                          data:{},
+                          lines:{},
+                          representation:{"ch0":temp_line},
+                          buttons:[],
+                          connection_text:[],
+                          graph_area:"#graph0",
+                          connection_text_area:"#connection_text_lab6"},
+        lab7dictionary = {name:"lab7",
+                          pins:[13,17,25],
+                          analogchannels:["ch0","ch2"],
+                          data:{},
+                          lines:{},
+                          representation:{},
+                          buttons:[],
+                          connection_text:[],
+                          graph_area:"#graph1",
+                          connection_text_area:"#connection_text_lab7"},
+        mainObj = {};
+
+mainObj[lab6dictionary.name]=lab6dictionary;
+mainObj[lab7dictionary.name]=lab7dictionary;
 
 
 
@@ -171,7 +190,7 @@ function makeButton(ref,pinNumber, containerID){
    return myButton
    }
 
-function displayGraphExample(id,channel) {
+function displayGraphExample(id,channel,representation) {
    var graph = d3.select(id).append("svg:svg")
               .attr("width", width)
               .attr("height", height);
@@ -193,7 +212,7 @@ function displayGraphExample(id,channel) {
     myLine = g.append("path")
     .datum(d3.range(n).map(function(){return 1;})) //Initial data
     .attr("class", "line")
-    .attr("d",line);
+    .attr("d",representation);
 
    //myLine = g.append("svg:path").attr("class","line").attr("d", line(data1));
         // or it can be done like this
@@ -202,10 +221,10 @@ function displayGraphExample(id,channel) {
 
   }
 
-function redrawWithoutAnimation(myLine, myData) {
+function redrawWithoutAnimation(myLine, myData, myRepresentation) {
             // static update without animation
             myLine.data([myData]) // set the new data
-                .attr("d", line); // apply the new data values
+                .attr("d", myRepresentation); // apply the new data values
         }
 
 function add_data_to_buffer(buffer, data){
@@ -235,7 +254,7 @@ for(var ref in mainObj){
   // default value) and plot it in a certain "graph_area".
   mainObj[ref].analogchannels.forEach(function(channel){
   var line_data = d3.range(n).map(function(){return 1;}); //Default values
-  var my_line = displayGraphExample(mainObj[ref].graph_area,channel);
+  var my_line = displayGraphExample(mainObj[ref].graph_area,channel,mainObj[ref].representation[channel] || line);
   mainObj[ref].data[channel]=line_data;
   mainObj[ref].lines[channel] = my_line;
   });
@@ -252,7 +271,8 @@ function update_lab_state(newData){
     mainObj[user].analogchannels.forEach(function(channel){
       add_data_to_buffer(mainObj[user].data[channel],newData[channel]);
       redrawWithoutAnimation(mainObj[user].lines[channel],
-                              mainObj[user].data[channel]);
+                              mainObj[user].data[channel],
+                             mainObj[user].representation[channel]||line);
         mainObj[user].lines[channel].classed('disconnected',false)
     })
 
@@ -262,7 +282,8 @@ function update_lab_state(newData){
     mainObj[user].analogchannels.forEach(function(channel){
       add_data_to_buffer(mainObj[user].data[channel],-0.5);
       redrawWithoutAnimation(mainObj[user].lines[channel],
-                              mainObj[user].data[channel]);
+                              mainObj[user].data[channel],
+                             mainObj[user].representation[channel]||line);
         mainObj[newData.user].lines[channel].classed('disconnected',false)
     })
 
