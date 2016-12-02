@@ -9,7 +9,7 @@ from tornado import gen, websocket, web, ioloop
 
 from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
-from communications.SerialCommManager import write_handshake
+from communications.SerialCommManager import write_handshake, SerialConnectionException
 
 import json
 import time
@@ -38,12 +38,56 @@ class SlaveNode(object):
         self.location = masterWSlocation
         self.reference = reference
         self.verbose = verbose
+        self.client = []
         print("Initiating Slave Node {}".format(self.reference))
         if self.verbose:
             print("Verbose mode")
         print("Emulation = {}".format(self.emulate))
         print("Master WS connection = {}".format(self.location))
 
+    def connect_to_arduino(self):
+        try:
+            if self.emulate:
+                print('(node) Emulating arduino')
+                my_emulator = ArduinoSerialEmulator()
+                emulation_port = my_emulator.report_server()
+                my_emulator.start()
+            else:
+                emulation_port=[]
+
+            print('(node) Setting-up arduino communications')
+            arduino_serial_comms= SCM.SerialCommManager(0.01,
+                                                        verbose=self.verbose,
+                                                        emulatedPort=emulation_port)
+            return arduino_serial_comms
+        except SerialException:
+            print('Serial exception ocurred. Try again in a few seconds')
+            raise
+        except ValueError as err:
+            raise
+
+    def connect_to_master(self):
+        errorState = True # Initialises the error state
+
+        while errorState:
+            try:
+                self.client = yield tornado.websocket.websocket_connect(self.location)
+                errorState = False
+                print('(node) waiting for messages:')
+
+            except socket.error as error:
+                if error.errno == 10061:
+                    print('\n(node) Connection refused by host. Maybe it is not running? Waiting')
+                    time.sleep(3)
+                    #raise KeyboardInterrupt
+        yield self.client
+
+
+    def send_message_to_master(self):
+        pass
+
+    def message_bridging_arduino(self):
+        pass
 
     @gen.coroutine
     def keepalive_ws(self):
@@ -63,23 +107,10 @@ class SlaveNode(object):
         # con: more data sent through the websocket
 
         #Init
-        try:
-            if self.emulate:
-                print('(node) Emulating arduino')
-                my_emulator = ArduinoSerialEmulator()
-                emulation_port = my_emulator.report_server()
-                my_emulator.start()
-            else:
-                emulation_port=[]
 
-            print('(node) Setting-up arduino communications')
-            arduino_serial_comms= SCM.SerialCommManager(0.01,
-                                                        verbose=self.verbose,
-                                                        emulatedPort=emulation_port)
-        except SerialException:
-            print('Serial exception ocurred. Try again in a few seconds')
-            raise
-
+        arduino_serial_comms = self.connect_to_arduino()
+        #self.connect_to_master()
+        self.send_message_to_master()
         ################################
         # CONNECT AND LISTEN TO MASTER
         ################################
@@ -94,20 +125,22 @@ class SlaveNode(object):
             try:
                 client = yield tornado.websocket.websocket_connect(self.location)
                 errorState = False
-                print('(node) waiting for messages:')
+                print('(node) waiting for messages')
 
             except socket.error as error:
                 if error.errno == 10061:
-                    print('\nConnection refused by host. Maybe it is not running?Waiting')
+                    print('\n(node) Connection refused by host. Maybe it is not running? Waiting')
                     time.sleep(3)
-                    raise KeyboardInterrupt
+                    #raise KeyboardInterrupt
 
+        #Main loop for data acquisition/sending
         while not errorState:
             try:
                 msg = yield client.read_message() #we may use a callback here, instead of the rest of this code block
             except UnboundLocalError:
-                print('\nConnection refused by host. Maybe it is not running?')
+                print('\nConnection refused by host. Maybe Master server is not running?')
                 raise KeyboardInterrupt
+
 
             if msg is None:
                 errorStte = True
@@ -141,6 +174,13 @@ class SlaveNode(object):
                 except KeyboardInterrupt:
                     errorState=True
                     raise
+                except ValueError as err:
+                    print(err.args)
+                except RuntimeError as err:
+                    if err.args[0]=='generator raised StopIteration':
+                        print('(node) Cannot find arduino connection')
+                    else:
+                        raise err
         yield True
 
     def convert_data(self,list_of_data):
@@ -221,9 +261,26 @@ if __name__ == "__main__":
                                   reference=args.reference,
                                   verbose=args.verbose)
 
-    try:
-        tornado.ioloop.IOLoop.instance().run_sync(slaveNodeInstance.keepalive_ws)
-    except KeyboardInterrupt:
-        tornado.ioloop.IOLoop.instance().stop()
-        tornado.ioloop.IOLoop.instance().close()
-        print('Exiting gracefully')
+    while True:
+        try:
+            tornado.ioloop.IOLoop.instance().run_sync(slaveNodeInstance.keepalive_ws)
+        except SerialConnectionException as err:
+            print(err.args)
+            print('(node) Problem found in serial connection. Exiting')
+        except ValueError as err:
+            print(type(err))
+            print(err.args)
+        except TypeError as err:  #Error thrown
+            print(err.__class__)
+            print(err.args)
+            print('(node) Problem found during connection')
+        except RuntimeError as err:
+            if err.args[0]=='generator raised StopIteration':
+                print('(node) Cannot find arduino connection')
+            else:
+                raise err
+        except KeyboardInterrupt:
+            tornado.ioloop.IOLoop.instance().stop()
+            tornado.ioloop.IOLoop.instance().close()
+            print('(node) Exiting gracefully')
+            break

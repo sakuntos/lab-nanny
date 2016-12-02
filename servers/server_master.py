@@ -13,6 +13,7 @@ from tornado.websocket import WebSocketClosedError
 import sqlite3
 from sqlite3 import OperationalError
 import time
+from database.DBHandler import DBHandler as DBHandler
 
 import uuid
 import socket
@@ -24,6 +25,7 @@ CLIENT_SOCKETPORT = 8008
 CLIENT_SOCKETNAME = r'/client_ws'
 
 DEFAULTMESSAGE    = 'X,50,0'
+DEFAULTDBNAME     = 'example.db'
 PERIODICITY       = 75
 DB_PERIODICITY    = 10000   #Save data to db every...
 
@@ -59,20 +61,11 @@ class MasterServer(object):
 
         #Create instance of the CommsHandler to mediate communications between node and client handlers
         self.comms_handler = CommsHandler()
-
         #Also, start communication with the database
-        self.db = sqlite3.connect('example.db')
-        self.c = self.db.cursor()
-        try:
-            self.c.execute('''CREATE TABLE data (date text, lab text, json_obj text)''')
-        except OperationalError as err:
-            if err.message is 'table data already exists':
-                pass
-
+        self.db_handler = DBHandler(db_name=DEFAULTDBNAME)
         #Init program
         self.run()
 
-    @property
     def run(self):
         """ Main function of the MasterServer class.
 
@@ -114,8 +107,11 @@ class MasterServer(object):
         except KeyboardInterrupt:
             ioloop.IOLoop.instance().stop()
             print('Exiting gracefully...')
+        finally:
+            self.on_close()
 
-        self.on_close()
+
+
 
 
     def tick(self):
@@ -141,7 +137,7 @@ class MasterServer(object):
             broadcast(self.comms_handler.nodes,msg)
 
         except WebSocketClosedError:
-            print self.comms_handler.nodes
+            print('Websocket closed')
         #In case we want to exit, we send a KeyboardInterrupt
         except KeyboardInterrupt:
             raise
@@ -161,13 +157,13 @@ class MasterServer(object):
         for id in self.comms_handler.last_data:
             datadict = self.comms_handler.last_data[id]
             dbdump = json.dumps(datadict)
-            self.c.execute("insert into data values (?,?,?)", (time.asctime(),datadict['user'],dbdump))
-        self.db.commit()
+            self.db_handler.add_data(time.asctime(),datadict['user'],dbdump)
+        self.db_handler.commit()
+
 
     def on_close(self):
-        self.db.commit()
-        self.c.close()
-        self.db.close()
+        self.db_handler.close()
+
 
 
 
@@ -351,5 +347,7 @@ def broadcast(list_of_endpoints, msg):
 def main1():
     my_master_server = MasterServer()
 
+
 if __name__ == "__main__":
     main1()
+

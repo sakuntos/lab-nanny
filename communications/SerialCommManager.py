@@ -110,39 +110,50 @@ class SerialCommManager:
         #TODO: Send/receive data in byte form?
         ## CONNECTION
         #self.connect_to_server()
-        with serial.Serial(**self.connection_settings) as ser:
+        try:
+            ser = serial.Serial(**self.connection_settings)
             st = time.clock()
             handshake_func(ser,verbose=self.verbose,**args)
+
         #get data
             data = ser.readline().decode()
-        #Fault conditions:
-        # Empty data (just /r or /n)
+            ser.close()
 
-        if data is not None:
-            if data.count(',')== NUM_CHANNELS:
-                ##PROCESS
-                et = time.clock() - st
-                if self.verbose:
-                    print('------------------------\n INIT POLLING ARDUINO:\n------------------------')
-                    print('Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
 
-                #make string into list of strings, comma separated
-                data_list = data.split(',')
+            #Fault conditions:
+            # Empty data (just /r or /n)
 
-                # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
-                data_array = np.array([float(i) for i in data_list[:-1]])
+            if data is not None:
+                if data.count(',')== NUM_CHANNELS:
+                    ##PROCESS
+                    et = time.clock() - st
+                    if self.verbose:
+                        print('------------------------\n INIT POLLING ARDUINO:\n------------------------')
+                        print('Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
 
-                #if self.verbose:
-                #print('Length of array: {}'.format(len(data_array)))
-                data_array_3d = data_array.reshape(NUM_CHANNELS,DATA_LEN)
+                    #make string into list of strings, comma separated
+                    data_list = data.split(',')
 
-                if DATA_LEN>0:
-                    self.time_axis = data_array_3d[0]
-                    self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
-                if self.verbose:
-                    print('Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st))
+                    # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
+                    data_array = np.array([float(i) for i in data_list[:-1]])
 
-                return self.time_axis, [channel for channel in self.channels]
+                    #if self.verbose:
+                    #print('Length of array: {}'.format(len(data_array)))
+                    data_array_3d = data_array.reshape(NUM_CHANNELS,DATA_LEN)
+
+                    if DATA_LEN>0:
+                        self.time_axis = data_array_3d[0]
+                        self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
+                    if self.verbose:
+                        print('Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st))
+
+                    return self.time_axis, [channel for channel in self.channels]
+
+        except ValueError as err:    #If the
+            raise SerialConnectionException
+        except TypeError as err:  #If disconnected it may not get a data point
+            print(err.args)
+
             # Every so often, arduino will fail to read the values. Uncommenting the following "else" bit will count those
             # failures as a SerialException.
             #else:
@@ -161,14 +172,21 @@ class SerialCommManager:
     def cleanup(self):
         self.ser.close()
 
+class SerialConnectionException(Exception):
+    pass
+
 
 def main():
-    fetcher = SerialCommManager(0.001, verbose=False)
-    pinNumber = chr(14)
-    dataList = fetcher.poll_arduino(handshake_func=write_handshake,
-                                    command=pinNumber)
+    try:
+        fetcher = SerialCommManager(0.001, verbose=False)
+        pinNumber = chr(14)
+        dataList = fetcher.poll_arduino(handshake_func=write_handshake,
+                                        command=pinNumber)
 
-    return True
+        return True
+    except Exception as err: #If the arduino is not connected
+        print(err.args)
+        print('Arduino not connected: please, connect the arduino and try running the node script again.')
 
 
 
