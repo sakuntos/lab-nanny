@@ -12,6 +12,7 @@ Author: David Paredes
 
 import time
 import serial
+from serial.serialutil import SerialTimeoutException, SerialException
 import numpy as np
 from serial.tools.list_ports import grep as port_grep
 import logging
@@ -25,12 +26,16 @@ def standard_handshake(serialinst,verbose=False):
 
 
     """
-    nbytes = serialinst.write("z") # can write anything here, just a single byte (any ASCII char)
+    nbytes = serialinst.write("A") # can write anything here, just a single byte (any ASCII char)
     if verbose:
-        print('(std) Wrote bytes to serial port: ', nbytes)
+        print('(std) Wrote bytes to serial port: {}'.format( nbytes))
     #wait for byte to be received before returning
     st = time.clock()
-    byte_back = serialinst.readline()
+    try:
+        byte_back = serialinst.readline()
+    except SerialTimeoutException:
+        serialinst.close()
+        raise ArduinoConnectionError
     et = time.clock()
     if verbose:
         print('(std) Received handshake data from serial port: {}'.format(byte_back))
@@ -58,7 +63,7 @@ class SerialCommManager:
     and should also be in the arduino_firmware directory
 
     """
-    def __init__(self,recording_time=.01,verbose=True,emulatedPort=[]):
+    def __init__(self,recording_time=1,verbose=True,emulatedPort=[],arduino_port=[]):
         self.recording_time = recording_time
         self.verbose = verbose
         self.time_axis = None
@@ -75,11 +80,34 @@ class SerialCommManager:
             self.connection_settings['rtscts'] = True
             self.connection_settings['dsrdtr'] = True
             self.connection_settings['port'] = port
-
+        elif arduino_port:
+            print('(SCM) Given port: {}'.format(arduino_port))
+            self.connection_settings['port']=arduino_port
         else:
-            port = self.get_arduino_port()
+            try:
+                port = self.get_arduino_port()
+            except StopIteration:
+                print('Arduino not found')
+                raise KeyboardInterrupt
             print('(SCM) Trying port: {}'.format(port))
             self.connection_settings['port'] = port
+        self.init_arduino_connection()
+
+
+
+    def init_arduino_connection(self):
+        try:
+            if self.verbose:
+                print('(SCM) Trying to connect to serial')
+            self.ser = serial.Serial(**self.connection_settings)
+            time.sleep(1)
+            print('(SCM) Connection Acquired')
+
+        except ValueError as err:
+            raise ArduinoConnectionError
+        except SerialException as err:
+            pass
+
 
     def get_arduino_port(self):
         """ Obtain the serial port being used by arduino using the "port_grep" function
@@ -88,12 +116,15 @@ class SerialCommManager:
 
         :return:
         """
-        myPort_generator = port_grep('arduino')
+        myPort_generator = port_grep('arduino|genuino')
         try:
+
             firstPort = myPort_generator.next()  # .__next__() # for python3
         except AttributeError:
             firstPort = myPort_generator.__next__()
+        print('(SCM) Arduino found in port {}'.format(firstPort[0]))
         return firstPort[0]
+
 
     def poll_arduino(self, handshake_func=standard_handshake,**args):
         """
@@ -111,14 +142,12 @@ class SerialCommManager:
         ## CONNECTION
         #self.connect_to_server()
         try:
-            ser = serial.Serial(**self.connection_settings)
+            #ser = serial.Serial(**self.connection_settings)
             st = time.clock()
-            handshake_func(ser,verbose=self.verbose,**args)
+            handshake_func(self.ser,verbose=self.verbose,**args)
 
         #get data
-            data = ser.readline().decode()
-            ser.close()
-
+            data = self.ser.readline().decode()
 
             #Fault conditions:
             # Empty data (just /r or /n)
@@ -128,7 +157,7 @@ class SerialCommManager:
                     ##PROCESS
                     et = time.clock() - st
                     if self.verbose:
-                        print('(SCM) ------------------------\n INIT POLLING ARDUINO:\n------------------------')
+                        print('(SCM) ------------------------\n(SCM) INIT POLLING ARDUINO:\n(SCM)------------------------')
                         print('(SCM) Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
 
                     #make string into list of strings, comma separated
@@ -145,14 +174,18 @@ class SerialCommManager:
                         self.time_axis = data_array_3d[0]
                         self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
                     if self.verbose:
-                        print('(SCM) Data acquisition complete. Time spent {0:.2e}\n------------------------'.format( time.clock() - st))
+                        print('(SCM) Data acquisition complete. Time spent {0:.2e}\n(SCM)------------------------'.format( time.clock() - st))
 
                     return self.time_axis, [channel for channel in self.channels]
 
         except ValueError as err:    #If the cable gets disconnected
-            raise SerialConnectionException
+            self.ser.close()
+            raise ArduinoConnectionError
+
         except TypeError as err:  #If disconnected it may not get a data point
             print(err.args)
+            self.ser.close()
+            raise ArduinoConnectionError
 
             # Every so often, arduino will fail to read the values. Uncommenting the following "else" bit will count those
             # failures as a SerialException.
@@ -170,9 +203,11 @@ class SerialCommManager:
         #     #port='COM6',   #look in the arduino software
 
     def cleanup(self):
+        if self.verbose:
+            print('(SCM) Cleaning up connection')
         self.ser.close()
 
-class SerialConnectionException(Exception):
+class ArduinoConnectionError(Exception):
     pass
 
 

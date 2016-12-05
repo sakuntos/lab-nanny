@@ -12,6 +12,7 @@ import tornado.web
 from tornado.websocket import WebSocketClosedError
 import sqlite3
 from sqlite3 import OperationalError
+import argparse
 import time
 from database.DBHandler import DBHandler as DBHandler
 
@@ -26,8 +27,8 @@ CLIENT_SOCKETNAME = r'/client_ws'
 
 DEFAULTMESSAGE    = 'X,50,0'
 DEFAULTDBNAME     = 'example.db'
-PERIODICITY       = 75
-DB_PERIODICITY    = 10000   #Save data to db every...
+PERIODICITY       = 100
+DB_PERIODICITY    = 30000   #Save data to db every...
 
 class MasterServer(object):
     """ Class that runs the Master Server for lab-nanny.
@@ -47,7 +48,7 @@ class MasterServer(object):
                  client_socketname=CLIENT_SOCKETNAME,
                  periodicity=PERIODICITY,
                  db_periodicity = DB_PERIODICITY,
-                 verbose = False):
+                 verbose = True):
         #Init parameters
         self.socket_port             = socket_port
         self.slave_socketname        = slave_socketname
@@ -344,10 +345,18 @@ def broadcast(list_of_endpoints, msg):
 
 
 
-def main1():
-    my_master_server = MasterServer()
+def main1(periodicity=100, verbose=0):
+    my_master_server = MasterServer(periodicity=periodicity,
+                                    verbose=verbose)
 
 
 if __name__ == "__main__":
-    main1()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-pr","--periodicity",help="address of the master server websocket",
+                        type=int,default=100)
+    parser.add_argument("-v","--verbose",help="Activate verbose",
+                        type=int,default=0)
+    args = parser.parse_args()
 
+    main1(periodicity=args.periodicity,
+          verbose=args.verbose)
