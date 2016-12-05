@@ -9,7 +9,7 @@ from tornado import gen, websocket, web, ioloop
 
 from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
-from communications.SerialCommManager import write_handshake, SerialConnectionException
+from communications.SerialCommManager import write_handshake, ArduinoConnectionError
 
 import json
 import time
@@ -20,35 +20,37 @@ import argparse
 USER_REFERENCE = 'lab6'
 EMULATE = True
 VERBOSE = True
-ADC_MAXINT = 4095
-ADC_MAXVOLT = 3.3   #For conversion of the analog readings
+ADC_MAXINT = 1023
+ADC_MAXVOLT = 5   #For conversion of the analog readings
 
 
-LOCATION = "ws://localhost:8001/nodes_ws" #10.3.20.25
+LOCATION = "ws://127.0.0.1:8001/nodes_ws" #"ws://localhost:8001/nodes_ws" #10.3.20.25
 PORT = 3000
 message_digital_0 = 65
 
 class SlaveNode(object):
 
     def __init__(self,emulate=False,
-                 verbose=False,
+                 verbose=True,
                  masterWSlocation=LOCATION,
-                 reference=USER_REFERENCE):
+                 reference=USER_REFERENCE,
+                 arduino_port = []):
         self.emulate = emulate
         self.location = masterWSlocation
         self.reference = reference
         self.verbose = verbose
         self.master_server = []
-
-        self.is_arduino_connected = False
-        self.is_master_connected = False
-        self.arduino_COMS = []
+        self.arduino_port = arduino_port
 
         print("Initiating Slave Node {}".format(self.reference))
         if self.verbose:
             print("Verbose mode")
         print("Emulation = {}".format(self.emulate))
-        print("Master WS connection = {}".format(self.location))
+        self.is_arduino_connected = False
+        self.is_master_connected = False
+        self.emulation_port = []
+
+        self.arduino_COMS = self.connect_to_arduino()
 
 
     def connect_to_arduino(self):
@@ -56,17 +58,20 @@ class SlaveNode(object):
             if self.emulate:
                 print('(node) Emulating arduino')
                 my_emulator = ArduinoSerialEmulator()
-                emulation_port = my_emulator.report_server()
+                self.emulation_port = my_emulator.report_server()
                 my_emulator.start()
             else:
-                emulation_port=[]
+                self.emulation_port=[]
+
 
             print('(node) Setting-up arduino communications')
             arduino_COMS= SCM.SerialCommManager(0.01,
-                                                        verbose=self.verbose,
-                                                        emulatedPort=emulation_port)
+                                                verbose=self.verbose,
+                                                emulatedPort=self.emulation_port,
+                                                arduino_port=self.arduino_port)
 
             self.is_arduino_connected = True
+            print('(node) Arduino connected')
             return arduino_COMS
 
         except SerialException:
@@ -74,11 +79,52 @@ class SlaveNode(object):
             self.is_arduino_connected = False
             raise
         except ValueError as err:
-            print('I am here')
-            raise
+            raise ArduinoConnectionError
 
-    def message_bridging_arduino(self):
-        pass
+    def message_bridging_arduino(self,msg):
+        if self.is_arduino_connected:
+            user, pinValue, pinNumber = convert_message_to_command(msg)
+            #Check if the message is for this node
+            if (user in (self.reference,'X')) and self.is_arduino_connected:
+                if self.verbose:
+                    print("(node) Incoming msg is: {}".format(msg))
+                    print("(node) CMD to arduino:  {}".format(pinNumber))
+                #This "try" block will look for KeyboardInterrupt events to close the program
+
+                t, channels = self.arduino_COMS.poll_arduino(
+                                    handshake_func=write_handshake,
+                                    command=pinNumber)
+                point_data = self.convert_data(channels)
+                self.master_server.write_message(json.dumps(point_data))
+        else:
+            self.send_message_on_serial_exception()
+
+
+    @gen.coroutine
+    def reconnect_to_arduino(self):
+        while not self.is_arduino_connected:
+            try:
+                if self.verbose:
+                    print('(node) Trying to connect @{}'.format(time.time()))
+                self.arduino_COMS.init_arduino_connection()
+                self.is_arduino_connected = True
+            except SerialException:
+                print('(node) Serial exception ocurred. Try again in a few seconds')
+                self.is_arduino_connected = False
+                raise
+            except ValueError as err:
+                raise
+            except ArduinoConnectionError:
+                time.sleep(1)
+
+    def send_message_on_serial_exception(self):
+        point_data = {
+                        'x': time.time(),
+                        'user':self.reference,
+                        'error':True
+                    }
+        self.master_server.write_message(json.dumps(point_data))
+
 
     @gen.coroutine
     def keepalive_ws(self):
@@ -97,9 +143,6 @@ class SlaveNode(object):
         # pro: master does not need to know about the details of the acquisition
         # con: more data sent through the websocket
 
-        #Init
-        self.arduino_COMS = self.connect_to_arduino()
-
         ################################
         # CONNECT AND LISTEN TO MASTER
         ################################
@@ -108,8 +151,10 @@ class SlaveNode(object):
         # - Convert to arduino command
         # - Connect to arduino using the command
         # - Receive data from arduino and send back to master # Initialises the error state
+
         while not self.is_master_connected:
             try:
+                print("Connecting to WS connection = {}".format(self.location))
                 self.master_server = yield tornado.websocket.websocket_connect(self.location)
                 print('(node) Waiting for messages')
                 self.is_master_connected = True
@@ -121,46 +166,34 @@ class SlaveNode(object):
 
 
         #Main loop for data acquisition/sending
-        while self.is_master_connected:
+        #Acquire data from master
+        while self.is_master_connected :
             try:
                 msg = yield self.master_server.read_message() #we may use a callback here, instead of the rest of this code block
             except UnboundLocalError:
-                print('\nConnection refused by host. Maybe Master server is not running?')
+                print('\n(node)Connection refused by host. Maybe Master server is not running?')
                 self.is_master_connected = False
-                raise DisconnectedHostError
+                raise HostConnectionError
 
-            if msg is None:
-                errorStte = True
-                print('(node) Could not retrieve message from server. It may be disconnected.')
-                raise KeyboardInterrupt
-
-            #self.send_message_to_master(msg)
-            user, pinValue, pinNumber = convert_message_to_command(msg)
-            #Check if the message is for this node
-            if user in (self.reference,'X'):
-                if self.verbose:
-                    print("(node) Incoming msg is: {}".format(msg))
-                    print("(node) CMD to arduino:  {}".format(pinNumber))
-                #This "try" block will look for KeyboardInterrupt events to close the program
+            #Process data:
+            if msg is not None:
                 try:
-                    t, channels = self.arduino_COMS.poll_arduino(
-                                        handshake_func=write_handshake,
-                                        command=pinNumber)
-                    point_data = self.convert_data(channels)
-                    self.master_server.write_message(json.dumps(point_data))
+                    self.message_bridging_arduino(msg)
 
                 # Sometimes the Arduino disconnectis, throwing a SerialException. We handle this and let the master server know
                 # there is an error.
-                except (SerialException, SerialConnectionException):
+                except (SerialException, ArduinoConnectionError):
                     # If the connection is not accessible, send a "standard" dictionary, with the 'error' flag
-                    point_data = {
-                        'x': time.time(),
-                        'user':self.reference,
-                        'error':True
-                    }
+                    self.send_message_on_serial_exception()
                     print('(node) Serial Exception @{}'.format(time.time()))
-                    self.master_server.write_message(json.dumps(point_data))
+                    if self.is_arduino_connected:
+                        self.is_arduino_connected = False
+                        self.arduino_COMS.cleanup()
+                        self.reconnect_to_arduino()
+
+
                 except ValueError as err:
+                    print('there')
                     print(err.args)
                 except RuntimeError as err:
                     if err.args[0]=='generator raised StopIteration':
@@ -170,6 +203,12 @@ class SlaveNode(object):
                 except KeyboardInterrupt:
                     self.is_master_connected=False
                     raise
+
+            else:
+                print('(node) Could not retrieve message from server. It may be disconnected.')
+                self.is_master_connected = False
+                #raise KeyboardInterrupt
+
 
     def convert_data(self,list_of_data):
         """Converts data from arduino to a value in volts.
@@ -198,6 +237,8 @@ class SlaveNode(object):
         return point_data
 
 
+
+
 def convert_message_to_command(message):
     """ This converts a message received through the socket to a command that
     Arduino will interpret.
@@ -224,7 +265,7 @@ def convert_message_to_command(message):
 
     return (user, pinValue, pinNumber)
 
-class DisconnectedHostError(Exception):
+class HostConnectionError(Exception):
     pass
 
 def main():
@@ -243,35 +284,42 @@ if __name__ == "__main__":
     default=LOCATION)
     parser.add_argument("-r","--reference",help="Reference for this node ('lab6')",
         default=USER_REFERENCE)
+    parser.add_argument("-p","--arduport",help="Arduino port",
+        default=0)
+
     parser.add_argument("-v","--verbose",help="Activate verbose",
         type=int,default=0)
     args = parser.parse_args()
     if args.emulate:
         from servers.arduino_emulator import ArduinoSerialEmulator
-    slaveNodeInstance = SlaveNode(emulate=args.emulate,
-                                  masterWSlocation=args.websocket,
-                                  reference=args.reference,
-                                  verbose=args.verbose)
+
+    try:
+        slaveNodeInstance = SlaveNode(emulate=args.emulate,
+                                      masterWSlocation=args.websocket,
+                                      reference=args.reference,
+                                      verbose=args.verbose,
+                                      arduino_port=args.arduport)
+    except KeyboardInterrupt:
+        print('Exiting gracefully')
 
     while True:
         try:
             print('\n---------------------------------\nStarting Slave node\n---------------------------------\n')
             tornado.ioloop.IOLoop.instance().run_sync(slaveNodeInstance.keepalive_ws)
-
-        except SerialConnectionException as err:
+        except ArduinoConnectionError as err:
             print(err.args)
             print('(node) Problem found in serial connection. Exiting')
         except ValueError as err:
             print(type(err))
             print(err.args)
-        except TypeError as err:  #Error thrown when disconnecting the serial connection AND RECONNECTING!
-            print('(node) Problem found in serial connection with arduino. Maybe the serial cable was disconnected.')
+        #except TypeError as err:  #Error thrown when disconnecting the serial connection AND RECONNECTING!
+        #    print('(node) Problem found in serial connection with arduino. Maybe the serial cable was disconnected.')
         except RuntimeError as err:
             if err.args[0]=='generator raised StopIteration':
                 print('(node) Cannot find arduino connection')
             else:
                 raise err
-        except DisconnectedHostError:
+        except HostConnectionError:
             print('(node) Master server is disconnected.')
             slaveNodeInstance.is_master_connected = False
             time.sleep(10)
@@ -280,5 +328,4 @@ if __name__ == "__main__":
             tornado.ioloop.IOLoop.instance().close()
             print('(node) Exiting gracefully')
             break
-
         time.sleep(2)
