@@ -21,18 +21,18 @@ USER_REFERENCE = 'lab6'
 EMULATE = True
 VERBOSE = True
 ADC_MAXINT = 1023
-ADC_MAXVOLT = 5   #For conversion of the analog readings
+ADC_MAXVOLT = 5.0   #For conversion of the analog readings
 
 
-LOCATION = "ws://127.0.0.1:8001/nodes_ws" #"ws://localhost:8001/nodes_ws" #10.3.20.25
+MASTER_LOCATION = "ws://127.0.0.1:8001/nodes_ws" #"ws://localhost:8001/nodes_ws" #10.3.20.25
 PORT = 3000
 message_digital_0 = 65
 
 class SlaveNode(object):
 
-    def __init__(self,emulate=False,
+    def __init__(self, emulate=False,
                  verbose=True,
-                 masterWSlocation=LOCATION,
+                 masterWSlocation=MASTER_LOCATION,
                  reference=USER_REFERENCE,
                  arduino_port = []):
         self.emulate = emulate
@@ -222,7 +222,7 @@ class SlaveNode(object):
 
         """
         list_of_data = [round(datum[0]*ADC_MAXVOLT/ADC_MAXINT,5) for datum in list_of_data]
-        list_of_data[0] = list_of_data[0]*100  #Temperature conversion
+        list_of_data[2] = list_of_data[2]*100  #Temperature conversion
         point_data =  {
             'user': self.reference,
             'error': False,   #Distinguishes it from the error state
@@ -232,6 +232,7 @@ class SlaveNode(object):
             'ch3' : list_of_data[3],
             'ch4' : list_of_data[4],
             'ch5' : list_of_data[5],
+            'ch6' : list_of_data[6],
             'x': time.time()
         }
         return point_data
@@ -280,8 +281,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-e","--emulate", help="If emulation of the arduino is required (*nix only)",
     type=int,default=0)
-    parser.add_argument("-ws","--websocket",help="address of the master server websocket",
-    default=LOCATION)
+    parser.add_argument("-ws","--websocket", help="address of the master server websocket",
+                        default=MASTER_LOCATION)
     parser.add_argument("-r","--reference",help="Reference for this node ('lab6')",
         default=USER_REFERENCE)
     parser.add_argument("-p","--arduport",help="Arduino port",

@@ -1,0 +1,95 @@
+#title{
+  color:#ffffff;
+}
+body {
+  background-color: black;
+  color:#ffffff;
+}
+
+.title{
+ color: #000;
+ font: bold 48px monospace;
+ float:left;
+  width:45%;
+}
+.connection_status{
+ color: #fff;
+ float:right;
+  width:45%;
+}
+.axis text{
+  fill:#fff;
+}
+.axis line{
+  stroke:#fff;
+}
+
+.line {
+  fill: none;
+  width:auto;
+  stroke: #fff;
+  stroke-width: 2.0px;
+}
+
+.line.disconnected{
+  fill: none;
+  stroke: #f00;
+  stroke-width: 1.0px;
+}
+
+.button{
+  fill: #fff;
+  stroke: #fff;
+  stroke-width: 1.0px;
+}
+.disabled {
+  opacity:0.5;
+}
+
+.lab7{
+  stroke:#88CCEE;
+  fill:#88CCEE;
+  color:#88CCEE;
+}
+
+.lab6{
+  stroke:#882255;
+  fill:#882255;
+  color:#882255;
+}
+
+.lab8{
+  stroke:#999933;
+  fill:#999933;
+  color:#999933;
+}
+
+.connectionText{
+  font-weight: bold;
+  font-size: 35px;
+  font-family: monospace;
+}
+.error{
+ opacity:0.2;
+}
+.not_error{
+  font-weight: bold;
+  font-size: 35px;
+}
+
+.final_value{
+  font-size: 12px;
+  fill:#fff;
+}
+.condition_error{
+  fill:#f00;
+}
+
+.channel_name{
+  font-size: 10px;
+  fill: #fff;
+}
+
+#aGraph{
+  
+}

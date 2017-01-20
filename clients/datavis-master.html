@@ -1,311 +1,124 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <html lang="en">
+<head>
+    <link rel="stylesheet" href="./styles.css">
+</head>
 
-<style>
-
-.title{
- color: #000;
- font: bold 48px monospace;
-}
-
-.line {
-  fill: none;
-  stroke: #000;
-  stroke-width: 1.0px;
-}
-
-.line.disconnected{
-  fill: none;
-  stroke: #f00;
-  stroke-width: 1.0px;
-}
-
-.button{
-  fill: #000;
-  stroke: #000;
-  stroke-width: 1.0px;
-}
-.disabled {
-  opacity:0.2;
-}
-
-.lab7{
-  stroke:#88CCEE;
-  fill:#88CCEE;
-  color:#88CCEE;
-}
-
-.lab6{
-  stroke:#882255;
-  fill:#882255;
-  color:#882255;
-}
-
-.lab8{
-  stroke:#999933;
-  fill:#999933;
-  color:#999933;
-}
-
-.connectionText{
-  font-weight: bold;
-  font-size: 35px;
-  font-family: monospace;
-}
-.error{
- opacity:0.2;
-
-}
-.not_error{
-  font-weight: bold;
-  font-size: 35px;
-}
-
-</style>
 <body>
-<div id="title" class="title">Lab-nanny v.0.5</div>
+<div id="header" >
+  <div id="title" class="title">LAB nanny v.0.5</div>
+  <div id="connection_status" class="connection_status"></div>
+  <div style="clear:both; font-size:1px;"></div>
+</div>
+
 <div id="left_graphs" style="float:left">
-<div id="connection_text_lab6" class="text lab6"></div>
-<div id="graph0" class="aGraph" style="width:450px;"></div>
-<div id="connection_text_lab7" class="text lab7"></div>
-<div id="graph1" class="aGraph" style="width:450px;"></div>
+  <div id="connection_text_lab6" class="text lab6"></div>
+  <div id="graph0" class="aGraph" style="width:450px;"></div>
+  <div id="connection_text_lab7" class="text lab7"></div>
+  <div id="graph1" class="aGraph" style="width:450px;"></div>
 </div>
 
 <div id="toggle_buttons"></div>
 
 <script src="//d3js.org/d3.v4.min.js"></script>
 <script>
-// n     = number of points
-// dataX = data holder for the X channel
-var n           = 1000,
-    periodicity = 0.1,
-    random      = d3.randomNormal(0, .2),
-    width       = 400,
-    height      = 50,
-    margin = {top:0, right: 0, bottom: 20, left: 0};
+    // n     = number of points
+    // dataX = data holder for the X channel
+
+    //var connection = new WebSocket('ws://pc0751.ad.icfo.net:8001/client_ws');
+
+    var n           = 1000,
+        periodicity = 0.1,
+        random      = d3.randomNormal(0, .2),
+        width       = 400,
+        height      = 100,
+        margin = {top:0, right: 40, bottom: 20, left: 5},
+        websocket_name = 'ws://localhost:8001/client_ws';
 
 
-var connection = new WebSocket('ws://localhost:8001/client_ws');
-//var connection = new WebSocket('ws://10.3.20.25:8001/ArduMon1');
+    var x = d3.scaleLinear()
+        .domain([0, n - 1])
+        .range([0, width-margin.right-margin.left]);
 
+    var y = d3.scaleLinear()
+        .domain([0, 5])
+        .range([height-margin.top-margin.bottom, 0]);
 
-var x = d3.scaleLinear()
-    .domain([0, n - 1])
-    .range([0, width-margin.right-margin.left]);
-var y = d3.scaleLinear()
-    .domain([0, 5])
-    .range([height-margin.top-margin.bottom, 0]);
+    var y_temp = d3.scaleLinear()
+        .domain([18, 26])
+        .range([height-margin.top-margin.bottom, 0]);
 
-var y_temp = d3.scaleLinear()
-    .domain([10, 26])
-    .range([height-margin.top-margin.bottom, 0]);
+    var line = d3.line()
+            // assign the X function to plot our line as we wish
+            .x(function(d,i) {
+                // verbose logging to show what's actually being done
+                //console.log('Plotting X value for data point: ' + d + ' using index: ' + i + ' to be at: ' + x(i) + ' using our xScale.');
+                // return the X coordinate where we want to plot this datapoint
+                return x(i);
+            })
+            .y(function(d) {
+                // return the Y coordinate where we want to plot this datapoint
+                return y(d);
+            });
 
-var line = d3.line()
-        // assign the X function to plot our line as we wish
-        .x(function(d,i) {
-            // verbose logging to show what's actually being done
-            //console.log('Plotting X value for data point: ' + d + ' using index: ' + i + ' to be at: ' + x(i) + ' using our xScale.');
-            // return the X coordinate where we want to plot this datapoint
-            return x(i);
-        })
-        .y(function(d) {
-            // return the Y coordinate where we want to plot this datapoint
-            return y(d);
-        });
-var temp_line = d3.line()
-        // assign the X function to plot our line as we wish
-        .x(function(d,i) {
-            // verbose logging to show what's actually being done
-            //console.log('Plotting X value for data point: ' + d + ' using index: ' + i + ' to be at: ' + x(i) + ' using our xScale.');
-            // return the X coordinate where we want to plot this datapoint
-            return x(i);
-        })
-        .y(function(d) {
-            // return the Y coordinate where we want to plot this datapoint
-            return y_temp(d);
-        });
+    var temp_line = d3.line()
+            // assign the X function to plot our line as we wish
+            .x(function(d,i) {
+                // verbose logging to show what's actually being done
+                //console.log('Plotting X value for data point: ' + d + ' using index: ' + i + ' to be at: ' + x(i) + ' using our xScale.');
+                // return the X coordinate where we want to plot this datapoint
+                return x(i);
+            })
+            .y(function(d) {
+                // return the Y coordinate where we want to plot this datapoint
+                return y_temp(d);
+            });
 
-var     lab6dictionary = {name:"lab6",
-                          pins:[11,13,17],
-                          analogchannels:["ch0","ch1","ch2","ch3","ch4","ch5"],
-                          data:{},
-                          lines:{},
-                          representation:{"ch0":temp_line},
-                          buttons:[],
-                          connection_text:[],
-                          graph_area:"#graph0",
-                          connection_text_area:"#connection_text_lab6"},
-        lab7dictionary = {name:"lab7",
-                          pins:[13,17,25],
-                          analogchannels:["ch0","ch2"],
-                          data:{},
-                          lines:{},
-                          representation:{},
-                          buttons:[],
-                          connection_text:[],
-                          graph_area:"#graph1",
-                          connection_text_area:"#connection_text_lab7"},
-        mainObj = {};
+    var     condition_blue = {control_user:"lab6",
+                           control:"ch2",
+                           max_value:23,
+                           target_channel:13,
+                           target_value:1,
+                           message:"Blue is unlocked"};
 
-mainObj[lab6dictionary.name]=lab6dictionary;
-mainObj[lab7dictionary.name]=lab7dictionary;
+    var     lab6dictionary = {name:"lab6",
+                              pins:[11,13,17],
+                              analogchannels:["ch0","ch1","ch2","ch3","ch4","ch5","ch6"],
+                              data:{},
+                              lines:{},
+                              representation:{"ch2":temp_line},
+                              buttons:[],
+                              connection_text:[],
+                              graph_area:"#graph0",
+                              connection_text_area:"#connection_text_lab6",
+                              conditions:[condition_blue,]},
+            lab7dictionary = {name:"lab7",
+                              pins:[13,17,25],
+                              analogchannels:["ch0",],
+                              data:{},
+                              lines:{},
+                              representation:{},
+                              buttons:[],
+                              connection_text:[],
+                              graph_area:"#graph1",
+                              connection_text_area:"#connection_text_lab7",
+                              conditions:[]},
+            mainObj = {};
 
+    mainObj[lab6dictionary.name]=lab6dictionary;
+    mainObj[lab7dictionary.name]=lab7dictionary;
 
+    var connection = new WebSocket(websocket_name);
+    d3.selectAll("#connection_status").text("Connected to "+websocket_name);
 
-function send_data_back(ref,number,state){
-  var message =  [ref,number,state];
-  connection.send(message);
-  return state
- }
-
-function makeButton(ref,pinNumber, containerID){
-   var buttonSVG = d3.select(containerID).append("svg:svg")
-   .attr("width", 30)
-   .attr("height", 60);
-   var myButton = buttonSVG.append("rect")
-          .attr("x",5)
-          .attr("y",5)
-          .attr("rx", 4)
-          .attr("ry", 4)
-          .attr("width", 20)
-          .attr("height",20)
-          .attr("class","button")
-          .classed("disabled",true)
-          .classed(ref,true)
-          .attr("pinNumber",pinNumber)
-          .on("click", function() {
-            var AmIOn = d3.select(this).classed("disabled");
-            d3.select(this).classed("disabled",AmIOn ? false : true);
-
-            // Verbose output
-            //console.log( );
-            send_data_back(ref,pinNumber,+AmIOn);//);
-   });
-   var myText = buttonSVG.append("text")
-          .attr("x",5)
-          .attr("y",60)
-          .attr("dy", "-1em")
-          .text(pinNumber);
-   return myButton
-   }
-
-function displayGraphExample(id,channel,representation) {
-   var graph = d3.select(id).append("svg:svg")
-              .attr("width", width)
-              .attr("height", height);
-   g = graph.append("g").attr("transform","translate(" + margin.left + "," + margin.top + ")");
-    var width1 = +width - margin.left - margin.right,
-    height1 = +height - margin.top - margin.bottom;
-   g.append("defs").append("clipPath")
-    .attr("id", "clip")
-    .append("rect")
-    .attr("width", width1)
-    .attr("height", height1);
-   g.append("g")
-    .attr("class", "axis axis--x")
-    .attr("transform", "translate(0," + y(0) + ")")
-    .call(d3.axisBottom(x));
-
-     g.append("g")
-      .attr("clip-path", "url(#clip)")
-    myLine = g.append("path")
-    .datum(d3.range(n).map(function(){return 1;})) //Initial data
-    .attr("class", "line")
-    .attr("d",representation);
-
-   //myLine = g.append("svg:path").attr("class","line").attr("d", line(data1));
-        // or it can be done like this
-        //graph.selectAll("path").data([data1]).enter().append("svg:path").attr("d", line);
-   return myLine;
-
-  }
-
-function redrawWithoutAnimation(myLine, myData, myRepresentation) {
-            // static update without animation
-            myLine.data([myData]) // set the new data
-                .attr("d", myRepresentation); // apply the new data values
-        }
-
-function add_data_to_buffer(buffer, data){
-  buffer.push(data);
-  buffer.shift();
-  return buffer;
-}
-
-//
-// MAIN CONSTRUCTOR:
-//
-
-// For each ref input
-for(var ref in mainObj){
-  //Create connection text
-  mainObj[ref].connection_text = d3.select(mainObj[ref].connection_text_area)
-          .classed("error",true)
-          .classed("connectionText",true)
-          .text(ref+ ' connected');
-  //Create the buttons specified in the "pins" property and add it to the
-  //"buttons" list
-  mainObj[ref].pins.forEach(function(pin){
-  var my_button = makeButton(mainObj[ref].name,pin,"#toggle_buttons");
-  mainObj[ref].buttons.push(my_button);
-  });
-  // Also, for each channel, associate to it some line data (initialized to a
-  // default value) and plot it in a certain "graph_area".
-  mainObj[ref].analogchannels.forEach(function(channel){
-  var line_data = d3.range(n).map(function(){return 1;}); //Default values
-  var my_line = displayGraphExample(mainObj[ref].graph_area,channel,mainObj[ref].representation[channel] || line);
-  mainObj[ref].data[channel]=line_data;
-  mainObj[ref].lines[channel] = my_line;
-  });
-
-}
-
-function update_lab_state(newData){
-  //verbose output
-  //console.log(newData);
-  var user = newData.user
-
-  if(!newData.error){
-    var user = newData.user
-    mainObj[user].analogchannels.forEach(function(channel){
-      add_data_to_buffer(mainObj[user].data[channel],newData[channel]);
-      redrawWithoutAnimation(mainObj[user].lines[channel],
-                              mainObj[user].data[channel],
-                             mainObj[user].representation[channel]||line);
-        mainObj[user].lines[channel].classed('disconnected',false)
-    })
-
-    mainObj[user].connection_text.classed("error",false);
-    }
-  else{
-    mainObj[user].analogchannels.forEach(function(channel){
-      add_data_to_buffer(mainObj[user].data[channel],-0.5);
-      redrawWithoutAnimation(mainObj[user].lines[channel],
-                              mainObj[user].data[channel],
-                             mainObj[user].representation[channel]||line);
-        mainObj[newData.user].lines[channel].classed('disconnected',false)
-    })
-
-    mainObj[user].connection_text.classed("error",true);
-  }
-}
-
-connection.onmessage = function(event) {
-
-    var newMessage = JSON.parse(event.data);
-    //verbose output: // console.log(newMessage);
-    Object.keys(newMessage).forEach(function(lab){
-    update_lab_state(newMessage[lab]);
-    })
-    // if no error found, update the channels specified in the lab's dict.
-    //
-    // if newData.error=true, update the channels using the -0.5 value, and
-    // change the connection_text style to "error"
-
-
-  }
 
 </script>
+<!-- loading order of the next scripts is important-->
+<script src="./buttons.js"></script>
+<script src="./graphs.js"></script>
+<script src="./logic.js"></script>
+
+
 </body>
 </html>

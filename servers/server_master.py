@@ -152,8 +152,8 @@ class MasterServer(object):
         :return:
         """
         #Write values to db (called every N seconds, probably 30-60)
-        if self.verbose:
-            print('(MASTER) Adding {} entries to DB @{}'.format(len(self.comms_handler.last_data),time.time()))
+        #if self.verbose:
+        print('(MASTER) {} Adding {} entries to DB @{}'.format(time.time(),len(self.comms_handler.last_data),time.time()))
 
         for id in self.comms_handler.last_data:
             datadict = self.comms_handler.last_data[id]

@@ -20,6 +20,7 @@ import matplotlib.animation as animation
 from serial.serialutil import SerialException
 plt.ion()
 
+NBITRESOLUTION = 10
 class AnimationPlot:
     """ adapted from http://electronut.in/plotting-real-time-data-from-arduino-using-python/
     """
@@ -75,8 +76,8 @@ class AnimationPlot:
             t, (C0, C1,C2,C3,C4,C5,C6,C7) = self.plotter.poll_arduino()
             #print 'Time spent reading {}'.format(time.clock()-st)
             if(len([t,C0,C1,C2,C3,C4,C5,C6,C7]) == 9):
-                self.add([0,C0*3.3/4095,C1*3.3/4095,C2*3.3/4095,C3*3.3/4095,
-                          C4*3.3/4095,C5*3.3/4095,C6*3.3/4095,C7*3.3/4095])
+                self.add([0,C0,C1,C2,C3,
+                          C4,C5,C6,C7])
 
 
             #print 'Time spent updating {}'.format(time.clock()-st)
@@ -159,7 +160,7 @@ def main():
 
     plt.title('live')
     for number,ax in enumerate(axes):
-        ax.set_ylim(0,3.3)
+        ax.set_ylim(0,2**NBITRESOLUTION-1)
         ax.set_xlim(0,maxLen)
         label = 'A{0:d} (V)'.format(number)
         ax.set_ylabel(label)
