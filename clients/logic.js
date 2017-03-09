@@ -27,7 +27,6 @@ function check_condition(single_dictionary,condition){
     }
     condition_status = (condition_status_min&condition_status_max);
 
-    console.log(['min',condition_status_min,'max',condition_status_max,'total',condition_status])
     d3.select(mainObj[single_dictionary.user].lines[condition.control].node()
               .parentElement
               .parentElement

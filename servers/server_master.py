@@ -14,7 +14,7 @@ import sqlite3
 from sqlite3 import OperationalError
 import argparse
 import time
-from database.DBHandler import DBHandler as DBHandler
+from database.DBHandler import DBHandler_complex as DBHandler
 
 import uuid
 import socket
@@ -79,28 +79,36 @@ class MasterServer(object):
 
         :return:
         """
-        self.application = tornado.web.Application([(self.slave_socketname, NodeHandler, {'comms_handler':self.comms_handler,
-                                                                                          'verbose':self.verbose}),
-                                           (self.client_socketname, ClientHandler,{'comms_handler':self.comms_handler,
-                                                                                   'verbose':self.verbose})])
+        self.application = tornado.web.Application([(self.slave_socketname,
+                                                     NodeHandler,
+                                                     {'comms_handler':self.comms_handler,
+                                                      'verbose':self.verbose}),
+                                                     (self.client_socketname,
+                                                     ClientHandler,
+                                                     {'comms_handler':self.comms_handler,
+                                                      'verbose':self.verbose})])
         self.application.listen(self.socket_port)
         print('Two connections created:')
-        print('-Client WS EST @ {}:{}{},  ({})'.format(socket.getfqdn(),
+        fqdn = socket.getfqdn()
+        alias = socket.gethostbyname(socket.gethostname())
+        print('-Client WS EST @ {}:{}{},  ({})'.format(fqdn,
                                                        self.client_socketport,
                                                        self.client_socketname,
-                                                       socket.gethostbyname(socket.gethostname())))
-        print('-Nodes WS EST  @ {}:{}{},  ({})'.format(socket.getfqdn(),
+                                                       alias))
+        print('-Nodes WS EST  @ {}:{}{},  ({})'.format(fqdn,
                                                        self.socket_port,
                                                        self.slave_socketname,
-                                                       socket.gethostbyname(socket.gethostname())))
+                                                       alias))
 
-        self.callback= ioloop.PeriodicCallback(self.tick, self.callback_periodicity)
+        self.callback= ioloop.PeriodicCallback(self.tick,
+                                               self.callback_periodicity)
         self.callback.start()
         print('Starting ioloop')
 
 
         # To save to DB:
-        self.dbcallback= ioloop.PeriodicCallback(self.db_tick,self.db_callback_periodicity)
+        self.dbcallback= ioloop.PeriodicCallback(self.db_tick,
+                                                 self.db_callback_periodicity)
         self.dbcallback.start()
 
         try:
@@ -153,12 +161,14 @@ class MasterServer(object):
         """
         #Write values to db (called every N seconds, probably 30-60)
         #if self.verbose:
-        print('(MASTER) {} Adding {} entries to DB @{}'.format(time.time(),len(self.comms_handler.last_data),time.time()))
+        print('(MASTER) Adding {} entries to DB @{}'.format(len(self.comms_handler.last_data),time.time()))
 
         for id in self.comms_handler.last_data:
             datadict = self.comms_handler.last_data[id]
-            dbdump = json.dumps(datadict)
-            self.db_handler.add_data(time.asctime(),datadict['user'],dbdump)
+            # Add data to observations table
+            # Check if table with name "id" exists
+            # Add data to specific table for ID
+            self.db_handler.add_database_entry(datadict)
         self.db_handler.commit()
 
 
@@ -203,7 +213,7 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
 
         NodeHandler.node_list.append(self)
         self.id = uuid.uuid4().hex
-        print('(NDH) New connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(NodeHandler.node_list)))
+        print('(NDH) New connection from {}. Total slave nodes: {}'.format(self.request.remote_ip, len(NodeHandler.node_list)))
         print('(NDH) UUID: {}'.format(self.id))
 
     def on_message(self, message):
