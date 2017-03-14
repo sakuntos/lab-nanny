@@ -10,11 +10,13 @@ import tornado.websocket
 import tornado.ioloop as ioloop
 import tornado.web
 from tornado.websocket import WebSocketClosedError
+import signal
+
 import sqlite3
 from sqlite3 import OperationalError
 import argparse
 import time
-from database.DBHandler import DBHandler_complex as DBHandler
+from database.DBHandler import DBHandler as DBHandler
 
 import uuid
 import socket
@@ -29,6 +31,8 @@ DEFAULTMESSAGE    = 'X,50,0'
 DEFAULTDBNAME     = 'example.db'
 PERIODICITY       = 100
 DB_PERIODICITY    = 30000   #Save data to db every...
+
+TFORMAT = '%y/%m/%d %H:%M:%S'
 
 class MasterServer(object):
     """ Class that runs the Master Server for lab-nanny.
@@ -59,6 +63,7 @@ class MasterServer(object):
         self.verbose                 = verbose
         self.callback                = []
         self.dbcallback              = []
+        self.HTTPserver              = []
 
         #Create instance of the CommsHandler to mediate communications between node and client handlers
         self.comms_handler = CommsHandler()
@@ -87,18 +92,26 @@ class MasterServer(object):
                                                      ClientHandler,
                                                      {'comms_handler':self.comms_handler,
                                                       'verbose':self.verbose})])
-        self.application.listen(self.socket_port)
-        print('Two connections created:')
-        fqdn = socket.getfqdn()
-        alias = socket.gethostbyname(socket.gethostname())
-        print('-Client WS EST @ {}:{}{},  ({})'.format(fqdn,
-                                                       self.client_socketport,
-                                                       self.client_socketname,
-                                                       alias))
-        print('-Nodes WS EST  @ {}:{}{},  ({})'.format(fqdn,
-                                                       self.socket_port,
-                                                       self.slave_socketname,
-                                                       alias))
+        try:
+            self.HTTPserver = self.application.listen(self.socket_port)
+            print('Two connections created:')
+            fqdn = socket.getfqdn()
+            alias = socket.gethostbyname(socket.gethostname())
+            print('-Client WS EST @ {}:{}{},  ({})'.format(fqdn,
+                                                           self.client_socketport,
+                                                           self.client_socketname,
+                                                           alias))
+            print('-Nodes WS EST  @ {}:{}{},  ({})'.format(fqdn,
+                                                           self.socket_port,
+                                                           self.slave_socketname,
+                                                           alias))
+        except socket.error as error:
+            #Catch the error if the connections are already present:
+            if error.errno == 10048:
+                pass
+            else:
+                raise
+
 
         self.callback= ioloop.PeriodicCallback(self.tick,
                                                self.callback_periodicity)
@@ -115,7 +128,7 @@ class MasterServer(object):
             ioloop.IOLoop.instance().start()
         except KeyboardInterrupt:
             ioloop.IOLoop.instance().stop()
-            print('Exiting gracefully...')
+            print('Exiting gracefully... @{}'.format(time.strftime(TFORMAT)))
         finally:
             self.on_close()
 
@@ -159,9 +172,12 @@ class MasterServer(object):
 
         :return:
         """
-        #Write values to db (called every N seconds, probably 30-60)
-        #if self.verbose:
-        print('(MASTER) Adding {} entries to DB @{}'.format(len(self.comms_handler.last_data),time.time()))
+        # Write values to db (called every N seconds, probably 30-60)
+        # if self.verbose:
+        num_connected_devices = len(self.comms_handler.last_data)
+        if num_connected_devices>0:
+            print('(MASTER) Adding {} entries to DB @{}'\
+                  .format(num_connected_devices,time.strftime(TFORMAT)))
 
         for id in self.comms_handler.last_data:
             datadict = self.comms_handler.last_data[id]
@@ -213,7 +229,10 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
 
         NodeHandler.node_list.append(self)
         self.id = uuid.uuid4().hex
-        print('(NDH) New connection from {}. Total slave nodes: {}'.format(self.request.remote_ip, len(NodeHandler.node_list)))
+        print('(NDH) New NODE {}. (out of {}) @ {}'\
+              .format(self.request.remote_ip,
+                      len(NodeHandler.node_list),
+                      time.strftime(TFORMAT)))
         print('(NDH) UUID: {}'.format(self.id))
 
     def on_message(self, message):
@@ -253,7 +272,7 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
 
 
     def on_close(self):
-        print('(NDH) Connection closed')
+        print('(NDH) Connection with {} closed @{}'.format(self.id))
         self.__comms_handler.remove_key(self.id)
         NodeHandler.node_list.remove(self)
 
@@ -303,7 +322,10 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
         """
         # We could do here the configuration of the node, like a dictionary with the channels exposed
         ClientHandler.client_list.append(self)
-        print('(CLH) New connection from {}. Total of slave nodes: {}'.format(self.request.remote_ip, len(ClientHandler.client_list)))
+        print('(CLH) New connection from {}. Total of slave nodes: {} @ {}'\
+              .format(self.request.remote_ip,
+                      len(ClientHandler.client_list),
+                      time.strftime(TFORMAT)))
 
     def on_message(self, message):
         """ Callback executed upon message reception from the client.
@@ -314,7 +336,9 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
         :return:
         """
         if self.verbose:
-            print('(CLH) Message received from client: {}'.format(message))
+            print('(CLH) Message received from client: {} @ {}'\
+                  .format(message,
+                          time.strftime(TFORMAT)))
         for node in self.__comms_handler.nodes:
             node.write_message(message)
 
@@ -336,9 +360,9 @@ class CommsHandler(object):
     It also keeps a dictionary with a reference to the last data sent from each of the nodes.
     """
     def __init__(self):
-        self.nodes =NodeHandler.node_list
-        self.clients=ClientHandler.client_list
-        self.last_data={}
+        self.nodes = NodeHandler.node_list
+        self.clients = ClientHandler.client_list
+        self.last_data = {}
 
     def remove_key(self,id):
         self.last_data.pop(id,None)
@@ -358,7 +382,12 @@ def broadcast(list_of_endpoints, msg):
 def main1(periodicity=100, verbose=0):
     my_master_server = MasterServer(periodicity=periodicity,
                                     verbose=verbose)
+    return my_master_server
 
+
+
+def signal_handler(signum,frame):
+    tornado.ioloop.IOLoop.instance().stop()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -368,5 +397,6 @@ if __name__ == "__main__":
                         type=int,default=0)
     args = parser.parse_args()
 
+    signal.signal(signal.SIGINT,signal_handler)
     main1(periodicity=args.periodicity,
           verbose=args.verbose)

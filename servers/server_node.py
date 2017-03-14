@@ -1,15 +1,42 @@
-# Slave nodes for lab-nanny
-#
-# Communicates with arduino using a serial connection and connects with the master server through websockets.
-
 #!/usr/bin/python
+"""Slave nodes for lab-nanny
+
+Communicates with arduino using a serial connection and connects with the
+master server through websockets.
+
+The node server instance starts by setting up the connection to the arduino
+using the SlaveNode.connect_to_arduino() method.
+The typical application would call the slave_node_instance.keepalive_ws
+method inside a loop, which is a coroutine working asynchronously, which
+'keeps alive' the connection between the arduino and the master server.
+The normal operation of the script keeps an outer "while True" loop that
+performs several actions in case of connection errors.
+
+The communication between the master server and the arduino is "bridged" by
+using the Slavenode.message_bridging_arduino method, which converts
+-- messages sent from the master server to an arduino command using the
+   convert_message_to_command function.
+-- a list of channels to a JSON dictionary, using the SlaveNode.convert_data
+   method) which is written into the master server's websocket
+
+To deploy:
+-- Run from the root folder using 'python -m servers.server_node', and using
+   the required modifiers such as the lab references (lab6, lab7,...), the
+   master websocket address, using emulation,...
+
+   E.g.
+    python -m servers.server_node -ws masterserver_fqdn:8001/nodes_ws -r lab7
+
+"""
 import tornado
 import tornado.websocket
 from tornado import gen, websocket, web, ioloop
+from tornado.httpclient import HTTPError
 
 from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
-from communications.SerialCommManager import write_handshake, ArduinoConnectionError
+from communications.SerialCommManager import write_handshake,\
+                                            ArduinoConnectionError
 
 import json
 import time
@@ -17,16 +44,24 @@ import socket
 
 import argparse
 
-USER_REFERENCE = 'lab6'
+USER_REFERENCE = 'lab7'
 EMULATE = True
 VERBOSE = True
-ADC_MAXINT = 1023
+##Settings for the Arduino MEGA
+ADC_MAXINT = 1023  # Maximum integer for analog channels (10 bit precision)
 ADC_MAXVOLT = 5.0   #For conversion of the analog readings
 
-
+# Location of the master server. It is prepended by the 'ws://' protocol.
 MASTER_LOCATION = "ws://127.0.0.1:8001/nodes_ws" #"ws://localhost:8001/nodes_ws" #10.3.20.25
-PORT = 3000
-message_digital_0 = 65
+
+# To make an arduino pin HIGH or LOW, we send it a character (int) whose value is
+# -- MESSAGE_PINVALUE_0+pinNumber for HIGH signals,
+# -- MESSAGE_PINVALUE_0-pinNumber-1 for LOW signals
+## e.g. pin 0 LOW corresponds to 64 and pin 1 HIGH corresponds to 66
+MESSAGE_PINVALUE_0 = 65
+
+# Time format
+TFORMAT = '%y/%m/%d %H:%M:%S'
 
 class SlaveNode(object):
 
@@ -39,7 +74,7 @@ class SlaveNode(object):
         self.location = masterWSlocation
         self.reference = reference
         self.verbose = verbose
-        self.master_server = []
+        self.master_server = []  #This will be the result of tornado.websocket.websocket_connect(self.location)
         self.arduino_port = arduino_port
 
         print("Initiating Slave Node {}".format(self.reference))
@@ -54,6 +89,13 @@ class SlaveNode(object):
 
 
     def connect_to_arduino(self):
+        """
+        Tries to establish a connection with an arduino device in the computer.
+
+        The connection is made using the SerialCommManager.SerialCommManager class.
+
+        :return: An instance of SerialCommManager.
+        """
         try:
             if self.emulate:
                 print('(node) Emulating arduino')
@@ -75,13 +117,42 @@ class SlaveNode(object):
             return arduino_COMS
 
         except SerialException:
-            print('Serial exception ocurred. Try again in a few seconds')
+            print('Serial exception ocurred. Try again in a few seconds @{}'\
+                  .format(time.strftime(TFORMAT)))
             self.is_arduino_connected = False
             raise
         except ValueError as err:
             raise ArduinoConnectionError
 
     def message_bridging_arduino(self,msg):
+        """
+        Method that bridges the connection between the master server and the arduino
+
+        For every message sent from the master server, it checks whether the message
+        is addressed to this node (through the "user" of the message), and it
+        "polls" the arduino. Later, using the response of the arduino, a message is
+        sent back to the master server as a response. The serial communications to
+        arduino is performed using the SerialCommManager.SerialCommManager instance
+        in self.arduino_comms, which sends a "write_handshake" through the
+        poll_arduino method.
+
+        The communication with the master server is performed by writing the
+        appropriate response into the websocket instance in self.master_server.
+        This function performs two conversions:
+            -- messages (string) sent from the master server to an arduino command
+               using the convert_message_to_command function.
+            -- a list of channels to a JSON dictionary, using the
+               SlaveNode.convert_data method, which is later written into the master
+               server's websocket
+
+        :param msg: Message from the master node, currently implemented using the
+                    syntax 'user,pin_number,pin_value', where
+                    user=lab6,lab7,... [If user=X, all arduinos will respond.]
+                    pin_number=integer,
+                    pin_value=(0,1).
+
+        :return:
+        """
         if self.is_arduino_connected:
             user, pinValue, pinNumber = convert_message_to_command(msg)
             #Check if the message is for this node
@@ -102,6 +173,9 @@ class SlaveNode(object):
 
     @gen.coroutine
     def reconnect_to_arduino(self):
+        """ Reconnects to an arduino device, trying to cope with typical errors.
+        :return:
+        """
         while not self.is_arduino_connected:
             try:
                 if self.verbose:
@@ -118,6 +192,9 @@ class SlaveNode(object):
                 time.sleep(1)
 
     def send_message_on_serial_exception(self):
+        """ Default message sent if a serial exception is present.
+        :return:
+        """
         point_data = {
                         'x': time.time(),
                         'user':self.reference,
@@ -154,15 +231,20 @@ class SlaveNode(object):
 
         while not self.is_master_connected:
             try:
-                print("Connecting to WS connection = {}".format(self.location))
+                print("(node) Connecting to WS connection = {} @{}"\
+                      .format(self.location,
+                              time.strftime(TFORMAT)))
                 self.master_server = yield tornado.websocket.websocket_connect(self.location)
-                print('(node) Waiting for messages')
+                print('(node) Ready')
                 self.is_master_connected = True
             except socket.error as error:
                 if error.errno == 10061:
                     print('\n(node) Connection refused by host. Maybe it is not running? Waiting')
                     time.sleep(2)
                 self.is_master_connected = False
+            except HTTPError as error:
+                print('(node) Connection taking quite long... @{}'\
+                      .format(TFORMAT))
 
 
         #Main loop for data acquisition/sending
@@ -193,8 +275,9 @@ class SlaveNode(object):
 
 
                 except ValueError as err:
-                    print('there')
+                    print('(node) ValueError thrown')
                     print(err.args)
+
                 except RuntimeError as err:
                     if err.args[0]=='generator raised StopIteration':
                         print('(node) Cannot find arduino connection')
@@ -257,24 +340,21 @@ def convert_message_to_command(message):
     pinValue = int(split_message[2]) # split_message[1] in ('True','true')
     user = split_message[0]
 
-    ## We will use 65+pinNumber for HIGH signals, and 65-pinNumber-1 for LOW signals
+    ## We will use MESSAGE_PINVALUE_0+pinNumber for HIGH signals,
+    ## and MESSAGE_PINVALUE_0-pinNumber-1 for LOW signals
     ## e.g. pin 0 LOW corresponds to 64 and pin 1 HIGH corresponds to 66
     if pinValue:
-        pinNumber = chr(int(split_message[1])+message_digital_0)
+        pinNumber = chr(int(split_message[1]) + MESSAGE_PINVALUE_0)
     else:
-        pinNumber = chr(message_digital_0-int(split_message[1])-1)
+        pinNumber = chr(MESSAGE_PINVALUE_0 - int(split_message[1]) - 1)
 
     return (user, pinValue, pinNumber)
 
+### ERRORS
 class HostConnectionError(Exception):
+    """ This error is thrown whenever the master server is disconnected
+    """
     pass
-
-def main():
-    try:
-        tornado.ioloop.IOLoop.instance().run_sync(keepalive_ws)
-    except KeyboardInterrupt:
-        tornado.ioloop.IOLoop.instance().close()
-        print('Exiting gracefully')
 
 
 if __name__ == "__main__":
@@ -310,6 +390,9 @@ if __name__ == "__main__":
         except ArduinoConnectionError as err:
             print(err.args)
             print('(node) Problem found in serial connection. Exiting')
+        except TypeError as err:
+            print('(node) TypeError thrown')
+            print(err.args)
         except ValueError as err:
             print(type(err))
             print(err.args)

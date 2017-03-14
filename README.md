@@ -20,7 +20,7 @@ They communicate with the PCs connected to them via the serial port using a hand
 It is in charge of polling the arduino, asking for data, and sending the data back to the master server. It offers the possibility of both I/O to arduino from server requests.
 
 ## Master server (servers.server_master)
-Periodically obtains data from all of the nodes. It may store this data (with low frequency) using a database.
+Periodically obtains data from all of the nodes. It stores this data (with low frequency) using a sqlite database.
 
 ## Clients
 Coded in HTML + JS. Connect to the master-server, which then sends the data to all connected clients every time the slave nodes sends data back.

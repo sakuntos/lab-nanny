@@ -2,7 +2,7 @@
 - The request must be easy to code(something like “monitor1, ‘ch1’,’ch2’,’ch3’”, or maybe just the “monitor” part, and then each client selects the data
 - There must be a way, in the server, to list the channels from the monitors (so that the requests from the clients can be compared to this list).
 -The server needs to cope with connection loss (from any segment)
-- Also, the server can save the data at intervals using mysql.
+- <s>Also, the server can save the data at intervals using mysql.</s>
 
 ## Notes about synchronized node response synchronization
 It should be relatively simple:

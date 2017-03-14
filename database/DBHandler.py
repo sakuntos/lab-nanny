@@ -6,30 +6,6 @@ OBSERVATION_TABLE_COLNAMES = ['_id','labID']
 OBSERVATION_TABLE_COLTYPES = ['INTEGER PRIMARY KEY AUTOINCREMENT','INTEGER']
 
 class DBHandler(object):
-    def __init__(self, db_name='example.db'):
-        self.db = sqlite3.connect(db_name)
-        self.cursor = self.db.cursor()
-
-        try:
-            self.cursor.execute('''CREATE TABLE data (date text, lab text, json_obj text)''')
-        except sqlite3.OperationalError as err:
-            if err.args[0] is 'table data already exists':
-                pass
-
-
-    def add_data(self,time,user,dict_JSON_dump):
-        self.cursor.execute("insert into data values (?,?,?)", (time,user,dict_JSON_dump))
-
-    def commit(self):
-        self.db.commit()
-
-    def close(self):
-        self.commit()
-        self.cursor.close()
-        self.db.close()
-
-
-class DBHandler_complex(object):
     def __init__(self, db_name='example.db',verbose=False):
         self.db = sqlite3.connect(db_name)
         self.cursor = self.db.cursor()
@@ -44,6 +20,8 @@ class DBHandler_complex(object):
         self._create_table(self.observations_tablename,
                            column_names=OBSERVATION_TABLE_COLNAMES,
                            column_types=OBSERVATION_TABLE_COLTYPES)
+        self.commit()
+
 
     def _create_table(self,tablename,column_names,column_types):
         ''' Creates a table with a given name, column names and types.
@@ -67,6 +45,8 @@ class DBHandler_complex(object):
             if self.verbose:
                 print('sql> '+sql_string)
             self.cursor.execute(sql_string)
+            self.commit()
+
 
     def _register_new_laboratory(self,labname):
         """ Registers a new laboratory in the lab's table and returns its ID.
@@ -81,7 +61,15 @@ class DBHandler_complex(object):
         if self.verbose:
             print('sql> '+sql_string)
         self.cursor.execute(sql_string,(labname,))
+        self.commit()
         return self.cursor.lastrowid
+
+    def _add_column(self,labname,columnname,datatype = 'REAL'):
+        # It is possible to add a default value for the newly created column.
+        self.cursor.execute("ALTER TABLE {table} ADD COLUMN '{colname}' {coltype}"\
+                    .format(table=labname,colname=columnname,
+                            coltype=datatype))
+        self.commit()
 
     def get_labID_by_name(self,labname):
         sql_string = "SELECT _id FROM {table} WHERE labNAME=(?)"\
@@ -91,7 +79,6 @@ class DBHandler_complex(object):
         self.cursor.execute(sql_string,(labname,))
         labID = self.cursor.fetchone()
         return labID[0]
-
 
     def check_table_exists(self,tablename):
         """ Check if a table with a given name exists in the current database.
@@ -204,7 +191,6 @@ class DBHandler_complex(object):
             labID = self._register_new_laboratory(user)
         else:
             labID = self.get_labID_by_name(user)
-            print(user)
 
         # 2: Add entry to observation list
         key_list = ','.join(OBSERVATION_TABLE_COLNAMES)
@@ -212,8 +198,8 @@ class DBHandler_complex(object):
             .format(tablename=self.observations_tablename,key_list=key_list)
         if self.verbose:
             print('sql> '+sql_string)
-        print(labID)
         self.cursor.execute(sql_string,(labID,))
+
         # 3: obtain observation ID
         observationID = self.cursor.lastrowid
         if self.verbose:
@@ -221,7 +207,6 @@ class DBHandler_complex(object):
 
         # 4: Add entry in table with suitable name
         self.add_data_from_dict(dictionary,observationID)
-
 
 
     def read_table(self,tablename):
