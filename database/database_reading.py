@@ -11,7 +11,7 @@ DBNAME = '../example.db'
 conn = sql.connect(DBNAME)
 cur = conn.cursor()
 
-cur.execute('select x,ch2,ch4 from lab6 where error = 0')
+cur.execute('select x,ch2,ch4 from lab7 where error=? and x>?',(0,1489622400.0,))
 myvals = cur.fetchall()
 
 timestamps = []
@@ -27,7 +27,7 @@ fds = dates.date2num(dts)
 
 fig = plt.figure()
 ax = fig.add_subplot(111)
-temp_line = ax.plot(fds,temperatures,'o', markersize = 3)
+temp_line = ax.plot(fds,temperatures,'--', markersize = 3)
 plt.ylabel('Temperature [Celsius]')
 
 #Format

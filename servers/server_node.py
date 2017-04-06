@@ -36,7 +36,8 @@ from tornado.httpclient import HTTPError
 from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
 from communications.SerialCommManager import write_handshake,\
-                                            ArduinoConnectionError
+                                            ArduinoConnectionError,\
+                                            handshake_func
 
 import json
 import time
@@ -112,8 +113,11 @@ class SlaveNode(object):
                                                 emulatedPort=self.emulation_port,
                                                 arduino_port=self.arduino_port)
 
-            self.is_arduino_connected = True
-            print('(node) Arduino connected')
+            if arduino_COMS.is_arduino_connected():
+                self.is_arduino_connected = True
+                print('(node) Arduino connected')
+            else:
+                self.is_arduino_connected = False
             return arduino_COMS
 
         except SerialException:
@@ -162,11 +166,14 @@ class SlaveNode(object):
                     print("(node) CMD to arduino:  {}".format(pinNumber))
                 #This "try" block will look for KeyboardInterrupt events to close the program
 
-                t, channels = self.arduino_COMS.poll_arduino(
-                                    handshake_func=write_handshake,
+                poll_output = self.arduino_COMS.poll_arduino(
+                                    handshake_func=handshake_func,
                                     command=pinNumber)
-                point_data = self.convert_data(channels)
-                self.master_server.write_message(json.dumps(point_data))
+                if poll_output is not None:
+                    t, channels = poll_output
+                    point_data = self.convert_data(channels)
+                    self.master_server.write_message(json.dumps(point_data))
+
         else:
             self.send_message_on_serial_exception()
 
@@ -244,7 +251,7 @@ class SlaveNode(object):
                 self.is_master_connected = False
             except HTTPError as error:
                 print('(node) Connection taking quite long... @{}'\
-                      .format(TFORMAT))
+                      .format(time.strftime(TFORMAT)))
 
 
         #Main loop for data acquisition/sending
@@ -272,8 +279,6 @@ class SlaveNode(object):
                         self.is_arduino_connected = False
                         self.arduino_COMS.cleanup()
                         self.reconnect_to_arduino()
-
-
                 except ValueError as err:
                     print('(node) ValueError thrown')
                     print(err.args)
@@ -392,12 +397,10 @@ if __name__ == "__main__":
             print('(node) Problem found in serial connection. Exiting')
         except TypeError as err:
             print('(node) TypeError thrown')
-            print(err.args)
+            print(err)
         except ValueError as err:
             print(type(err))
             print(err.args)
-        #except TypeError as err:  #Error thrown when disconnecting the serial connection AND RECONNECTING!
-        #    print('(node) Problem found in serial connection with arduino. Maybe the serial cable was disconnected.')
         except RuntimeError as err:
             if err.args[0]=='generator raised StopIteration':
                 print('(node) Cannot find arduino connection')

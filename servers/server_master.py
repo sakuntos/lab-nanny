@@ -1,3 +1,31 @@
+"""Master server for lab-nanny
+
+Collects data from the different nodes and makes it available to the
+clients using websockets.
+
+The functionality of the master server is to join the data from the
+different nodes and make it available in two forms:
+-- clients using websockets
+-- store it in a database
+
+To do this, the master uses the Masterserver.tick method, which
+-- submits updates to the clients
+-- sends requests for data to the nodes
+(in this order)
+By centralizing the communications (that is, nodes send updates to
+MasterServer, which then sends them to the clients), we reduce the
+amount of connections required from (#clients * #nodes) to
+(#clients + #nodes)
+
+The master server handles the connections both with the inside (nodes)
+and the outside (clients) using two classes: NodeHandler and
+ClientHandler, which are classes derived from the
+tornado.websocket.WebSocketHandler class.
+
+The server uses an auxilitary communications handler class (CommsHandler)
+which keeps a list of nodes and clients, and the last data from the nodes.
+
+"""
 # Master server for lab-nanny
 #
 # Collects data from the different nodes and makes it available to the clients through websockets.
@@ -12,8 +40,6 @@ import tornado.web
 from tornado.websocket import WebSocketClosedError
 import signal
 
-import sqlite3
-from sqlite3 import OperationalError
 import argparse
 import time
 from database.DBHandler import DBHandler as DBHandler
@@ -37,13 +63,14 @@ TFORMAT = '%y/%m/%d %H:%M:%S'
 class MasterServer(object):
     """ Class that runs the Master Server for lab-nanny.
 
-    It keeps a NodeHandler and a ClientHandler object to communicate with the slave nodes
-    nd the clients, which in turn use an instance of the CommsHandler class to do internal communications.
+    It keeps a NodeHandler and a ClientHandler object to communicate with
+    the slave nodes and the clients, which in turn use an instance of the
+    CommsHandler class to do internal communications.
 
-    Periodically (every fraction of a second), the Master server polls the nodes for data, and sends the
-    results to the clients.
-    Additionally, with a different periodicity (~10s) the Master server saves a copy of the data to a
-    database.
+    Periodically (every fraction of a second), the Master server polls the
+    nodes for data, and sends the results to the clients.
+    Additionally, with a different periodicity (~10s) the Master server
+    saves a copy of the data to a database.
 
     """
     def __init__(self, slave_socketname = SLAVE_SOCKETNAME,
@@ -53,7 +80,7 @@ class MasterServer(object):
                  periodicity=PERIODICITY,
                  db_periodicity = DB_PERIODICITY,
                  verbose = True):
-        #Init parameters
+         #Init parameters
         self.socket_port             = socket_port
         self.slave_socketname        = slave_socketname
         self.client_socketname       = client_socketname
@@ -65,24 +92,26 @@ class MasterServer(object):
         self.dbcallback              = []
         self.HTTPserver              = []
 
-        #Create instance of the CommsHandler to mediate communications between node and client handlers
+        # Create instance of the CommsHandler to mediate communications between
+        # node and client handlers
         self.comms_handler = CommsHandler()
-        #Also, start communication with the database
+        # Also, start communication with the database
         self.db_handler = DBHandler(db_name=DEFAULTDBNAME)
-        #Init program
+        # Init program
         self.run()
 
     def run(self):
         """ Main function of the MasterServer class.
 
-        It creates a tornado web application with two websocket handlers: one for the nodes, and one for the clients,
-        listening on the same port (self.socket_port), but using different names.
+        It creates a tornado web application with two websocket handlers: one
+        for the nodes, and one for the clients, listening on the same port
+        (self.socket_port), but using different names.
 
         Then, it initialises two periodic callbacks:
-        - One that manages the node/client communications, typically with a sub-second periodicity
-        - Anotherone to store long-term traces of the data to a database (every ~10s)
-
-        :return:
+        - One that manages the node/client communications, typically with a
+        sub-second periodicity
+        - Another one to store long-term traces of the data to a database
+        (every ~10s)
         """
         self.application = tornado.web.Application([(self.slave_socketname,
                                                      NodeHandler,
@@ -112,7 +141,6 @@ class MasterServer(object):
             else:
                 raise
 
-
         self.callback= ioloop.PeriodicCallback(self.tick,
                                                self.callback_periodicity)
         self.callback.start()
@@ -133,21 +161,18 @@ class MasterServer(object):
             self.on_close()
 
 
-
-
-
     def tick(self):
         """ Function called periodically to manage node/client communication
 
-        - First, the function sends the last data (obtained from the nodes) to the clients
-        - Then, it requests more data to the nodes.
+        - First, the function sends the last data (obtained from the nodes)
+        to the clients
+        -  Then, it requests more data to the nodes.
 
-        By first sending the data, and then asking for more, we make sure the nodes have time to send
-        the data back to the MasterServer before sending that data to the clients; this comes at the
-        expense of sending "old data" (with a repetition period), which has no impact unless the application
-        is time-critical.
-
-        :return:
+        By first sending the data, and then asking for more, we make sure the
+        nodes have time to send the data back to the MasterServer before
+        sending that data to the clients; this comes at the expense of sending
+        "old data" (with a repetition period), which has no impact unless the
+        application is time-critical.
         """
         # TODO: should only send data to the right client connection, instead of relying on the nodes to check whether the message is for them?
 
@@ -167,10 +192,9 @@ class MasterServer(object):
     def db_tick(self):
         """ Function called periodically to save data to the database
 
-        This function generates an entry in the database for each node ID held in the CommsHandler.last_data instance.
-        The entry in the database is composed of a timestamp, a username, and the JSON string.
-
-        :return:
+        This function generates an entry in the database for each node ID
+        held in the CommsHandler.last_data instance. The entry in the
+        database is composed of a timestamp, a username, and the JSON string.
         """
         # Write values to db (called every N seconds, probably 30-60)
         # if self.verbose:
@@ -203,8 +227,8 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
     def initialize(self, comms_handler,verbose=True):
         """Initialisation of an object of the NodeHandler class.
 
-        We provide a communications handler object which keeps a list of the nodes and clients, and
-        a list of the last messages from the nodes.
+        We provide a communications handler object which keeps a list of the nodes
+        and clients, and a list of the last messages from the nodes.
 
         :param comms_handler:
         :type comms_handler: CommsHandler
@@ -218,8 +242,9 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
     def open(self):
         """ Callback executed upon opening a new slave node connection.
 
-        This function adds the new connection to the class "nodes" list and provides a unique id to the connection
-        using the uuid.uuid4().hex function.
+        This function adds the new connection to the class "nodes" list and
+        provides a unique id to the connection using the uuid.uuid4().hex
+        function.
 
         :return:
         """
@@ -246,14 +271,16 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
         message_dict = json.loads(message)
         if self.verbose:
             if not message_dict['error']:
-                print('(NDH) time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'.format(message_dict["x"],
-                                                                              message_dict["user"],
-                                                                              message_dict["error"],
-                                                                              message_dict["ch0"]))
+                print('(NDH) time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'\
+                      .format(message_dict["x"],
+                              message_dict["user"],
+                              message_dict["error"],
+                              message_dict["ch0"]))
             else:
-                print('(NDH) time: {0:.3f}, user: {1}, error: {2}'.format(message_dict["x"],
-                                                                    message_dict["user"],
-                                                                    message_dict["error"]))
+                print('(NDH) time: {0:.3f}, user: {1}, error: {2}'\
+                      .format(message_dict["x"],
+                              message_dict["user"],
+                              message_dict["error"]))
 
         #There are two ways in which we can pass the data to the clients:
         # - Store the data in the self.__comms_handler.last_data dictionary
@@ -272,7 +299,8 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
 
 
     def on_close(self):
-        print('(NDH) Connection with {} closed @{}'.format(self.id))
+        print('(NDH) Connection with {} closed @{}'.format(self.id,
+                                                           time.strftime(TFORMAT)))
         self.__comms_handler.remove_key(self.id)
         NodeHandler.node_list.remove(self)
 
@@ -295,15 +323,16 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
 
 
 class ClientHandler(tornado.websocket.WebSocketHandler):
-    """ Class that handles the communication via websockets with the slave nodes.
+    """ Class that handles the communication via websockets with the
+    slave nodes.
     """
     client_list = []
 
     def initialize(self, comms_handler,verbose=False):
         """ Initialisation of an object of the ClientHandler class.
 
-        We provide a communications handler object which keeps a list of the nodes and clients, and
-        a list of the last messages from the nodes.
+        We provide a communications handler object which keeps a list of the
+        nodes and clients, and a list of the last messages from the nodes.
 
         :param comms_handler:
         :type comms_handler: CommsHandler
@@ -330,7 +359,8 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
     def on_message(self, message):
         """ Callback executed upon message reception from the client.
 
-        The message is a JSON string, which is then broadcasted to all the nodes sequentially.
+        The message is a JSON string, which is then broadcasted to all the
+        nodes sequentially.
 
         :param message:
         :return:
@@ -355,9 +385,11 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
 
 
 class CommsHandler(object):
-    """ Class that keeps references of the nodes and the clients for communication purposes
+    """ Class that keeps references of the nodes and the clients for
+    communication purposes
 
-    It also keeps a dictionary with a reference to the last data sent from each of the nodes.
+    It also keeps a dictionary with a reference to the last data sent
+    from each of the nodes.
     """
     def __init__(self):
         self.nodes = NodeHandler.node_list
@@ -368,7 +400,8 @@ class CommsHandler(object):
         self.last_data.pop(id,None)
 
 def broadcast(list_of_endpoints, msg):
-    """ Broadcasts a message to a list of endpoints using the "write_message" method.
+    """ Broadcasts a message to a list of endpoints using the "write_message"
+    method.
 
     :param list_of_endpoints:
     :param msg:
@@ -383,7 +416,6 @@ def main1(periodicity=100, verbose=0):
     my_master_server = MasterServer(periodicity=periodicity,
                                     verbose=verbose)
     return my_master_server
-
 
 
 def signal_handler(signum,frame):
