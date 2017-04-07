@@ -35,8 +35,7 @@ from tornado.httpclient import HTTPError
 
 from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
-from communications.SerialCommManager import write_handshake,\
-                                            ArduinoConnectionError,\
+from communications.SerialCommManager import ArduinoConnectionError,\
                                             handshake_func
 
 import json
@@ -137,7 +136,7 @@ class SlaveNode(object):
         "polls" the arduino. Later, using the response of the arduino, a message is
         sent back to the master server as a response. The serial communications to
         arduino is performed using the SerialCommManager.SerialCommManager instance
-        in self.arduino_comms, which sends a "write_handshake" through the
+        in self.arduino_comms, which sends a handshake through the
         poll_arduino method.
 
         The communication with the master server is performed by writing the
@@ -154,6 +153,7 @@ class SlaveNode(object):
                     user=lab6,lab7,... [If user=X, all arduinos will respond.]
                     pin_number=integer,
                     pin_value=(0,1).
+        :type msg: str
 
         :return:
         """
@@ -309,7 +309,7 @@ class SlaveNode(object):
         :param list_of_data: typically a list with values 0-(2^12-1) for a number of analog channels
 
         """
-        list_of_data = [round(datum[0]*ADC_MAXVOLT/ADC_MAXINT,5) for datum in list_of_data]
+        list_of_data = [round(datum*ADC_MAXVOLT/ADC_MAXINT,5) for datum in list_of_data]
         list_of_data[2] = list_of_data[2]*100  #Temperature conversion
         point_data =  {
             'user': self.reference,
@@ -395,9 +395,9 @@ if __name__ == "__main__":
         except ArduinoConnectionError as err:
             print(err.args)
             print('(node) Problem found in serial connection. Exiting')
-        except TypeError as err:
-            print('(node) TypeError thrown')
-            print(err)
+        #except TypeError as err:
+        #    print('(node) TypeError thrown')
+        #    print(err)
         except ValueError as err:
             print(type(err))
             print(err.args)
