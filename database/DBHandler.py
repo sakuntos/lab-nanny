@@ -1,9 +1,12 @@
 import sqlite3
-
+import time
+import json
 LAB_TABLE_COLNAMES = ['_id','labNAME']
 LAB_TABLE_COLTYPES = ['INTEGER PRIMARY KEY AUTOINCREMENT','TEXT']
 OBSERVATION_TABLE_COLNAMES = ['_id','labID']
 OBSERVATION_TABLE_COLTYPES = ['INTEGER PRIMARY KEY AUTOINCREMENT','INTEGER']
+METADATA_TABLE_COLNAMES = ['time','labID','metadata']
+METADATA_TABLE_COLTYPES = ['REAL','INTEGER','TEXT']
 
 class DBHandler(object):
     def __init__(self, db_name='example.db',verbose=False):
@@ -11,6 +14,8 @@ class DBHandler(object):
         self.cursor = self.db.cursor()
         self.labs_tablename = 'laboratories'
         self.observations_tablename = 'observation_list'
+        self.metadata_tablename = 'metadata_list'
+
         self.verbose=verbose
 
         #If these table names exist, nothing will happen
@@ -20,6 +25,9 @@ class DBHandler(object):
         self._create_table(self.observations_tablename,
                            column_names=OBSERVATION_TABLE_COLNAMES,
                            column_types=OBSERVATION_TABLE_COLTYPES)
+        self._create_table(self.metadata_tablename,
+                           column_names=METADATA_TABLE_COLNAMES,
+                           column_types=METADATA_TABLE_COLTYPES)
         self.commit()
 
 
@@ -207,6 +215,25 @@ class DBHandler(object):
 
         # 4: Add entry in table with suitable name
         self.add_data_from_dict(dictionary,observationID)
+
+    def register_new_metadata(self, dictionary):
+
+        # 1: Check if table exists
+        user = dictionary["user"]
+        if not self.check_table_exists(user):
+            # Creates new table with suitable properties
+            # and adds an ID to the laboratories list
+            self.create_table_from_dict(dictionary)
+            labID = self._register_new_laboratory(user)
+        else:
+            labID = self.get_labID_by_name(user)
+        # 2: Add entry to metadata list
+        key_list = ','.join(METADATA_TABLE_COLNAMES)
+        sql_string = 'insert into {tablename}({key_list}) VALUES(?,?,?)'\
+            .format(tablename=self.metadata_tablename,key_list=key_list)
+        if self.verbose:
+            print('sql> '+sql_string)
+        self.cursor.execute(sql_string,(time.time(),labID,json.dumps(dictionary),))
 
 
     def read_table(self,tablename):

@@ -20,6 +20,8 @@ using the Slavenode.message_bridging_arduino method, which converts
    method) which is written into the master server's websocket
 
 To deploy:
+-- Change the DICT_CONTENTS variable to state the actual contents of the
+   channels.
 -- Run from the root folder using 'python -m servers.server_node', and using
    the required modifiers such as the lab references (lab6, lab7,...), the
    master websocket address, using emulation,...
@@ -37,6 +39,7 @@ from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
 from communications.SerialCommManager import ArduinoConnectionError,\
                                             handshake_func
+from server_master import CONFKEYWORD
 
 import json
 import time
@@ -63,6 +66,17 @@ MESSAGE_PINVALUE_0 = 65
 # Time format
 TFORMAT = '%y/%m/%d %H:%M:%S'
 
+DICT_CONTENTS = {
+            'ch0' :'temp sensor',
+            'ch1' : 'more stuff',
+            'ch2' : 'probe spectroscopy',
+            'ch3' : 'empty',
+            'ch4' : 'empty',
+            'ch5' : 'empty',
+            'ch6' : 'empty',
+            CONFKEYWORD : True
+        }
+
 class SlaveNode(object):
 
     def __init__(self, emulate=False,
@@ -77,6 +91,12 @@ class SlaveNode(object):
         self.master_server = []  #This will be the result of tornado.websocket.websocket_connect(self.location)
         self.arduino_port = arduino_port
 
+        #Register node in master (metadata)
+        self.metadata_registered = False  # If the metadata has been sent to the master server
+        self.metadata_dict = DICT_CONTENTS
+        self.metadata_dict['user']=self.reference
+
+
         print("Initiating Slave Node {}".format(self.reference))
         if self.verbose:
             print("Verbose mode")
@@ -86,6 +106,7 @@ class SlaveNode(object):
         self.emulation_port = []
 
         self.arduino_COMS = self.connect_to_arduino()
+
 
 
     def connect_to_arduino(self):
@@ -242,13 +263,14 @@ class SlaveNode(object):
                       .format(self.location,
                               time.strftime(TFORMAT)))
                 self.master_server = yield tornado.websocket.websocket_connect(self.location)
-                print('(node) Ready')
+                print('(node) Connection with master server started')
                 self.is_master_connected = True
             except socket.error as error:
                 if error.errno == 10061:
                     print('\n(node) Connection refused by host. Maybe it is not running? Waiting')
                     time.sleep(2)
                 self.is_master_connected = False
+                self.metadata_registered = False
             except HTTPError as error:
                 print('(node) Connection taking quite long... @{}'\
                       .format(time.strftime(TFORMAT)))
@@ -258,6 +280,10 @@ class SlaveNode(object):
         #Acquire data from master
         while self.is_master_connected :
             try:
+                if not self.metadata_registered:
+                    self.master_server.write_message(json.dumps(DICT_CONTENTS))
+                    self.metadata_registered=True
+
                 msg = yield self.master_server.read_message() #we may use a callback here, instead of the rest of this code block
             except UnboundLocalError:
                 print('\n(node)Connection refused by host. Maybe Master server is not running?')

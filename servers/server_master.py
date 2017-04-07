@@ -60,6 +60,8 @@ DB_PERIODICITY    = 30000   #Save data to db every...
 
 TFORMAT = '%y/%m/%d %H:%M:%S'
 
+CONFKEYWORD = 'conf'
+
 class MasterServer(object):
     """ Class that runs the Master Server for lab-nanny.
 
@@ -95,6 +97,7 @@ class MasterServer(object):
         # Create instance of the CommsHandler to mediate communications between
         # node and client handlers
         self.comms_handler = CommsHandler()
+        self.comms_handler.bind_to(self.db_metadata_append)
         # Also, start communication with the database
         self.db_handler = DBHandler(db_name=DEFAULTDBNAME)
         # Init program
@@ -174,13 +177,15 @@ class MasterServer(object):
         "old data" (with a repetition period), which has no impact unless the
         application is time-critical.
         """
-        # TODO: should only send data to the right client connection, instead of relying on the nodes to check whether the message is for them?
+        # TODO: should only send data to the right client connection?, instead of relying on the nodes to check whether the message is for them?
 
         try:
-            # If the NodeHandler decides to write messages to the clients upon reception of each message, comment this
-            # line
+            # If the NodeHandler decides to write messages to the clients upon
+            # reception of each message, comment this line
             broadcast(self.comms_handler.clients,self.comms_handler.last_data)
-            msg = DEFAULTMESSAGE  #Write a command with no side consequences. The 'X' ensures that all nodes reply
+            # Write a command with no side consequences. The 'X' ensures that
+            # all nodes reply
+            msg = DEFAULTMESSAGE
             broadcast(self.comms_handler.nodes,msg)
 
         except WebSocketClosedError:
@@ -198,6 +203,8 @@ class MasterServer(object):
         """
         # Write values to db (called every N seconds, probably 30-60)
         # if self.verbose:
+
+        ## CHECK HERE IF THE METADATA HAS BEEN ADDED
         num_connected_devices = len(self.comms_handler.last_data)
         if num_connected_devices>0:
             print('(MASTER) Adding {} entries to DB @{}'\
@@ -210,6 +217,15 @@ class MasterServer(object):
             # Add data to specific table for ID
             self.db_handler.add_database_entry(datadict)
         self.db_handler.commit()
+
+    def db_metadata_append(self,idx):
+        """ Function called when a new node transmits its metadata
+
+        This function generates an entry in the database for each new node
+        The entry in the database is composed of a timestamp, a username, and the JSON string.
+        """
+        print('(MASTER) Updating metadata')
+        self.db_handler.register_new_metadata(self.comms_handler.metadata[idx])
 
 
     def on_close(self):
@@ -238,6 +254,8 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
 
         self.__comms_handler = comms_handler
         self.verbose = verbose
+
+
 
     def open(self):
         """ Callback executed upon opening a new slave node connection.
@@ -268,30 +286,40 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
         :param message:
         :return:
         """
+        ## TODO: maybe we can code here a case in which we configure
+        ## For example, we can write a "configure" key in the dictionary
         message_dict = json.loads(message)
-        if self.verbose:
-            if not message_dict['error']:
-                print('(NDH) time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'\
-                      .format(message_dict["x"],
-                              message_dict["user"],
-                              message_dict["error"],
-                              message_dict["ch0"]))
-            else:
-                print('(NDH) time: {0:.3f}, user: {1}, error: {2}'\
-                      .format(message_dict["x"],
-                              message_dict["user"],
-                              message_dict["error"]))
 
-        #There are two ways in which we can pass the data to the clients:
-        # - Store the data in the self.__comms_handler.last_data dictionary
-        # - Send the data to the clients everytime a message is received
-        # The first one helps with synchronizing sending the data to the clients.
-        # The second one is more immediate, but it might impact the performance of the network,
-        # since we communicate with each of the clients on every message received.
+        if CONFKEYWORD not in message_dict:
 
-        # To use the first method, uncomment this line, and make sure that the "tick()" function
-        # in the master server uses :
-        self.__comms_handler.last_data[self.id] = message_dict
+            if self.verbose:
+                if not message_dict['error']:
+                    print('(NDH) time: {0:.3f}, user: {1}, error: {2}, ch0: {3}'\
+                          .format(message_dict["x"],
+                                  message_dict["user"],
+                                  message_dict["error"],
+                                  message_dict["ch0"]))
+                else:
+                    print('(NDH) time: {0:.3f}, user: {1}, error: {2}'\
+                          .format(message_dict["x"],
+                                  message_dict["user"],
+                                  message_dict["error"]))
+
+            #There are two ways in which we can pass the data to the clients:
+            # - Store the data in the self.__comms_handler.last_data dictionary
+            # - Send the data to the clients everytime a message is received
+            # The first one helps with synchronizing sending the data to the clients.
+            # The second one is more immediate, but it might impact the performance of the network,
+            # since we communicate with each of the clients on every message received.
+
+            # To use the first method, uncomment this line, and make sure that the "tick()" function
+            # in the master server uses :
+            self.__comms_handler.last_data[self.id] = message_dict
+        else:
+            self.__comms_handler.add_metadata(self.id,message_dict)
+
+
+
 
         # To use the second method, uncomment this other line
         #for client in self.__comms_handler.clients:
@@ -395,9 +423,32 @@ class CommsHandler(object):
         self.nodes = NodeHandler.node_list
         self.clients = ClientHandler.client_list
         self.last_data = {}
+        self.metadata = {}
+        self._last_metadata_id = []
+        self._observers= []
+
+    def get_last_metadata_id(self):
+        return self._last_metadata_id
+
+    def set_last_metadata_id(self, value):
+        print('setting new metadata id')
+        self._last_metadata_id = value
+        for callback in self._observers:
+            callback(value)
+
+    last_metadata_id = property(get_last_metadata_id,set_last_metadata_id)
+
+    def bind_to(self,callback):
+        print('Binding')
+        self._observers.append(callback)
+
+    def add_metadata(self,id,dictionary):
+        self.metadata[id] = dictionary
+        self.last_metadata_id = id # This triggers the callback
 
     def remove_key(self,id):
         self.last_data.pop(id,None)
+        self.metadata.pop(id,None)
 
 def broadcast(list_of_endpoints, msg):
     """ Broadcasts a message to a list of endpoints using the "write_message"

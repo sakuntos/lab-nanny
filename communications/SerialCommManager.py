@@ -156,16 +156,14 @@ class SerialCommManager:
                     print('(SCM) Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
                 #make string into list of strings, comma separated
                 data_list = data.split(',')
-
                 # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
                 data_array = np.array([float(i) for i in data_list[:-1]])
-                #self.channels = np.array([float(i) for i in data_list[:-1]])
 
                 self.channels = data_array[1:]
                 self.time_axis = data_array[0]
                 if self.verbose:
                     print('(SCM) Data acquisition complete. Time spent {0:.2e}\n(SCM)------------------------'.format( time.clock() - st))
-    
+
                 return self.time_axis, self.channels
             else:
                 return None
