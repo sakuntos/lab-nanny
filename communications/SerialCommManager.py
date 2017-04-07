@@ -125,7 +125,10 @@ class SerialCommManager:
             if self.verbose:
                 print('(SCM) Trying to connect to serial')
             self.ser = serial.Serial(**self.connection_settings)
-            time.sleep(0.5)  #it was 1
+            # After opening the serial port, we wait for a bit until it's ready.
+            # Otherwise, we might block the serial reading (for example, sleep(0.5)
+            # blocks the MEGA)
+            time.sleep(1)
             print('(SCM) Connection Acquired')
 
         except ValueError as err:
@@ -134,6 +137,7 @@ class SerialCommManager:
             pass
 
     def read_data_from_arduino(self):
+        print self.ser.inWaiting()
         if self.ser.inWaiting():
             return self.ser.readline().decode()
 
