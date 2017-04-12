@@ -281,13 +281,14 @@ class SlaveNode(object):
         while self.is_master_connected :
             try:
                 if not self.metadata_registered:
-                    self.master_server.write_message(json.dumps(DICT_CONTENTS))
+                    self.master_server.write_message(json.dumps(self.metadata_dict))
                     self.metadata_registered=True
 
                 msg = yield self.master_server.read_message() #we may use a callback here, instead of the rest of this code block
             except UnboundLocalError:
                 print('\n(node)Connection refused by host. Maybe Master server is not running?')
                 self.is_master_connected = False
+                self.metadata_registered = False
                 raise HostConnectionError
 
             #Process data:
@@ -316,11 +317,13 @@ class SlaveNode(object):
                         raise err
                 except KeyboardInterrupt:
                     self.is_master_connected=False
+                    self.metadata_registered = False
                     raise
 
             else:
                 print('(node) Could not retrieve message from server. It may be disconnected.')
                 self.is_master_connected = False
+                self.metadata_registered = False
                 #raise KeyboardInterrupt
 
 
@@ -416,7 +419,8 @@ if __name__ == "__main__":
 
     while True:
         try:
-            print('\n---------------------------------\nStarting Slave node\n---------------------------------\n')
+            print('\n-----------------------------\nStarting Slave node  {}\n-----------\
+------------------\n'.format(args.reference))
             tornado.ioloop.IOLoop.instance().run_sync(slaveNodeInstance.keepalive_ws)
         except ArduinoConnectionError as err:
             print(err.args)
@@ -435,6 +439,7 @@ if __name__ == "__main__":
         except HostConnectionError:
             print('(node) Master server is disconnected.')
             slaveNodeInstance.is_master_connected = False
+            slaveNodeInstance.metadata_registered = False
             time.sleep(10)
         except KeyboardInterrupt:
             tornado.ioloop.IOLoop.instance().stop()

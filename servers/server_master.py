@@ -50,9 +50,8 @@ import socket
 import json
 from json2html import json2html
 
-SLAVE_SOCKETPORT  = 8001
+SOCKETPORT  = 8001
 SLAVE_SOCKETNAME  = r'/nodes_ws'
-CLIENT_SOCKETPORT = 8008
 CLIENT_SOCKETNAME = r'/client_ws'
 STATUS_ADDR       = r'/status'
 
@@ -80,18 +79,16 @@ class MasterServer(object):
 
     """
     def __init__(self, slave_socketname = SLAVE_SOCKETNAME,
-                 slave_socketport=SLAVE_SOCKETPORT,
-                 client_socketport=CLIENT_SOCKETPORT,
+                 socketport=SOCKETPORT,
                  client_socketname=CLIENT_SOCKETNAME,
                  periodicity=PERIODICITY,
                  db_periodicity = DB_PERIODICITY,
                  status_addr = STATUS_ADDR,
                  verbose = True):
          #Init parameters
-        self.slave_socketport             = slave_socketport
+        self.socketport             = socketport
         self.slave_socketname        = slave_socketname
         self.client_socketname       = client_socketname
-        self.client_socketport       = client_socketport
         self.status_addr             = status_addr
         self.callback_periodicity    = periodicity
         self.db_callback_periodicity = db_periodicity
@@ -136,20 +133,20 @@ class MasterServer(object):
                                                      StatusHandler,
                                                      {'comms_handler':self.comms_handler})])
         try:
-            self.HTTPserver = self.application.listen(self.slave_socketport)
+            self.HTTPserver = self.application.listen(self.socketport)
             fqdn = socket.getfqdn()
             alias = socket.gethostbyname(socket.gethostname())
             print('Status page  @ {}:{}{},  ({})'.format(fqdn,
-                                                        self.slave_socketport,
-                                                        self.status_addr,
-                                                        alias))
+                                                         self.socketport,
+                                                         self.status_addr,
+                                                         alias))
             print('Websockets opened:')
             print('-Client WS EST @ {}:{}{},  ({})'.format(fqdn,
-                                                           self.client_socketport,
+                                                           self.socketport,
                                                            self.client_socketname,
                                                            alias))
             print('-Nodes WS EST  @ {}:{}{},  ({})'.format(fqdn,
-                                                           self.slave_socketport,
+                                                           self.socketport,
                                                            self.slave_socketname,
                                                            alias))
 
@@ -330,6 +327,7 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
             # in the master server uses :
             self.__comms_handler.last_data[self.id] = message_dict
         else:
+            self.user = message_dict['user']
             self.__comms_handler.add_metadata(self.id,message_dict)
 
 
@@ -444,19 +442,28 @@ class StatusHandler(tornado.web.RequestHandler):
         fetch_time = time.strftime(TFORMAT)
         num_nodes = len(self.__comms_handler.nodes)
         num_clients = len(self.__comms_handler.clients)
-        self.write('<meta http-equiv="refresh" content="3">')
+        self.write('<meta http-equiv="refresh" content="10">')
+        self.write(' <style> .wrapper {display:flex}</style>')
         self.write('<p> TIME: {}</p>'.format(fetch_time))
         self.write("<h3>Number of connected nodes: {}</h3><ul>".format(num_nodes))
         for node in self.__comms_handler.nodes:
-            self.write('<li>{}</li>'.format(socket.getfqdn(node.request.remote_ip)))
-        self.write("</ul><h3>Number of connected clients: {}</h3><ul>".format(num_clients))
+            if 'user' in node.__dict__:
+                user = node.user
+            else:
+                user ='no ID'
+            self.write('<li>{} ({})</li>'.format(socket.getfqdn(node.request.remote_ip),
+                                                 user))
+        self.write("</ul><h3>Number of connected clients: {}</h3><ul style>".format(num_clients))
         for client in self.__comms_handler.clients:
             self.write('<li>{}</li>'.format(socket.getfqdn(client.request.remote_ip)))
         self.write("</ul><h3>Last data: </h3>")
+        self.write("<div class=wrapper>")
         for node_id in self.__comms_handler.last_data:
             last_data = self.__comms_handler.last_data[node_id]
-            self.write('<p>{}</p>{}'.format(last_data['user'],
+            self.write('<p>{} {}</p>'.format(last_data['user'],
                                             json2html.convert(json=last_data)))
+        self.write("</div>")
+
 
 
 
