@@ -52,3 +52,5 @@ Temporary Items
 *.pyc
 *.pyc
 *.db
+*.sqlite
+other_sources/LabLock-NannyInterface/LabLock-NannyInterface.ino
