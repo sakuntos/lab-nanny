@@ -37,6 +37,7 @@ import tornado.httpserver
 import tornado.websocket
 import tornado.ioloop as ioloop
 import tornado.web
+import tornado
 from tornado.websocket import WebSocketClosedError
 import signal
 
@@ -47,11 +48,13 @@ from database.DBHandler import DBHandler as DBHandler
 import uuid
 import socket
 import json
+from json2html import json2html
 
 SLAVE_SOCKETPORT  = 8001
 SLAVE_SOCKETNAME  = r'/nodes_ws'
 CLIENT_SOCKETPORT = 8008
 CLIENT_SOCKETNAME = r'/client_ws'
+STATUS_ADDR       = r'/status'
 
 DEFAULTMESSAGE    = 'X,50,0'
 DEFAULTDBNAME     = 'example.db'
@@ -61,6 +64,7 @@ DB_PERIODICITY    = 30000   #Save data to db every...
 TFORMAT = '%y/%m/%d %H:%M:%S'
 
 CONFKEYWORD = 'conf'
+
 
 class MasterServer(object):
     """ Class that runs the Master Server for lab-nanny.
@@ -76,17 +80,19 @@ class MasterServer(object):
 
     """
     def __init__(self, slave_socketname = SLAVE_SOCKETNAME,
-                 socket_port=SLAVE_SOCKETPORT,
+                 slave_socketport=SLAVE_SOCKETPORT,
                  client_socketport=CLIENT_SOCKETPORT,
                  client_socketname=CLIENT_SOCKETNAME,
                  periodicity=PERIODICITY,
                  db_periodicity = DB_PERIODICITY,
+                 status_addr = STATUS_ADDR,
                  verbose = True):
          #Init parameters
-        self.socket_port             = socket_port
+        self.slave_socketport             = slave_socketport
         self.slave_socketname        = slave_socketname
         self.client_socketname       = client_socketname
         self.client_socketport       = client_socketport
+        self.status_addr             = status_addr
         self.callback_periodicity    = periodicity
         self.db_callback_periodicity = db_periodicity
         self.verbose                 = verbose
@@ -116,27 +122,37 @@ class MasterServer(object):
         - Another one to store long-term traces of the data to a database
         (every ~10s)
         """
+
+
         self.application = tornado.web.Application([(self.slave_socketname,
                                                      NodeHandler,
                                                      {'comms_handler':self.comms_handler,
                                                       'verbose':self.verbose}),
-                                                     (self.client_socketname,
+                                                    (self.client_socketname,
                                                      ClientHandler,
                                                      {'comms_handler':self.comms_handler,
-                                                      'verbose':self.verbose})])
+                                                      'verbose':self.verbose}),
+                                                    (self.status_addr,
+                                                     StatusHandler,
+                                                     {'comms_handler':self.comms_handler})])
         try:
-            self.HTTPserver = self.application.listen(self.socket_port)
-            print('Two connections created:')
+            self.HTTPserver = self.application.listen(self.slave_socketport)
             fqdn = socket.getfqdn()
             alias = socket.gethostbyname(socket.gethostname())
+            print('Status page  @ {}:{}{},  ({})'.format(fqdn,
+                                                        self.slave_socketport,
+                                                        self.status_addr,
+                                                        alias))
+            print('Websockets opened:')
             print('-Client WS EST @ {}:{}{},  ({})'.format(fqdn,
                                                            self.client_socketport,
                                                            self.client_socketname,
                                                            alias))
             print('-Nodes WS EST  @ {}:{}{},  ({})'.format(fqdn,
-                                                           self.socket_port,
+                                                           self.slave_socketport,
                                                            self.slave_socketname,
                                                            alias))
+
         except socket.error as error:
             #Catch the error if the connections are already present:
             if error.errno == 10048:
@@ -147,7 +163,7 @@ class MasterServer(object):
         self.callback= ioloop.PeriodicCallback(self.tick,
                                                self.callback_periodicity)
         self.callback.start()
-        print('Starting ioloop')
+        print('\nStarting ioloop')
 
 
         # To save to DB:
@@ -230,8 +246,6 @@ class MasterServer(object):
 
     def on_close(self):
         self.db_handler.close()
-
-
 
 
 class NodeHandler(tornado.websocket.WebSocketHandler):
@@ -411,6 +425,40 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
         return True
 
 
+class StatusHandler(tornado.web.RequestHandler):
+    def initialize(self, comms_handler):
+        """Initialisation of an object of the NodeHandler class.
+
+        We provide a communications handler object which keeps a list of the nodes
+        and clients, and a list of the last messages from the nodes.
+
+        :param comms_handler:
+        :type comms_handler: CommsHandler
+        :param verbose: True for verbose output
+        :return:
+        """
+
+        self.__comms_handler = comms_handler
+
+    def get(self):
+        fetch_time = time.strftime(TFORMAT)
+        num_nodes = len(self.__comms_handler.nodes)
+        num_clients = len(self.__comms_handler.clients)
+        self.write('<meta http-equiv="refresh" content="3">')
+        self.write('<p> TIME: {}</p>'.format(fetch_time))
+        self.write("<h3>Number of connected nodes: {}</h3><ul>".format(num_nodes))
+        for node in self.__comms_handler.nodes:
+            self.write('<li>{}</li>'.format(socket.getfqdn(node.request.remote_ip)))
+        self.write("</ul><h3>Number of connected clients: {}</h3><ul>".format(num_clients))
+        for client in self.__comms_handler.clients:
+            self.write('<li>{}</li>'.format(socket.getfqdn(client.request.remote_ip)))
+        self.write("</ul><h3>Last data: </h3>")
+        for node_id in self.__comms_handler.last_data:
+            last_data = self.__comms_handler.last_data[node_id]
+            self.write('<p>{}</p>{}'.format(last_data['user'],
+                                            json2html.convert(json=last_data)))
+
+
 
 class CommsHandler(object):
     """ Class that keeps references of the nodes and the clients for
@@ -420,9 +468,9 @@ class CommsHandler(object):
     from each of the nodes.
     """
     def __init__(self):
-        self.nodes = NodeHandler.node_list
-        self.clients = ClientHandler.client_list
-        self.last_data = {}
+        self.nodes = NodeHandler.node_list       #list
+        self.clients = ClientHandler.client_list #list
+        self.last_data = {}                #dictionary
         self.metadata = {}
         self._last_metadata_id = []
         self._observers= []
@@ -439,7 +487,6 @@ class CommsHandler(object):
     last_metadata_id = property(get_last_metadata_id,set_last_metadata_id)
 
     def bind_to(self,callback):
-        print('Binding')
         self._observers.append(callback)
 
     def add_metadata(self,id,dictionary):
