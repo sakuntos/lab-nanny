@@ -20,6 +20,8 @@ using the Slavenode.message_bridging_arduino method, which converts
    method) which is written into the master server's websocket
 
 To deploy:
+-- Change the DICT_CONTENTS variable to state the actual contents of the
+   channels.
 -- Run from the root folder using 'python -m servers.server_node', and using
    the required modifiers such as the lab references (lab6, lab7,...), the
    master websocket address, using emulation,...
@@ -35,8 +37,9 @@ from tornado.httpclient import HTTPError
 
 from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
-from communications.SerialCommManager import write_handshake,\
-                                            ArduinoConnectionError
+from communications.SerialCommManager import ArduinoConnectionError,\
+                                            handshake_func
+from server_master import CONFKEYWORD
 
 import json
 import time
@@ -63,6 +66,17 @@ MESSAGE_PINVALUE_0 = 65
 # Time format
 TFORMAT = '%y/%m/%d %H:%M:%S'
 
+DICT_CONTENTS = {
+            'ch0' :'temp sensor',
+            'ch1' : 'more stuff',
+            'ch2' : 'probe spectroscopy',
+            'ch3' : 'empty',
+            'ch4' : 'empty',
+            'ch5' : 'empty',
+            'ch6' : 'empty',
+            CONFKEYWORD : True
+        }
+
 class SlaveNode(object):
 
     def __init__(self, emulate=False,
@@ -77,6 +91,12 @@ class SlaveNode(object):
         self.master_server = []  #This will be the result of tornado.websocket.websocket_connect(self.location)
         self.arduino_port = arduino_port
 
+        #Register node in master (metadata)
+        self.metadata_registered = False  # If the metadata has been sent to the master server
+        self.metadata_dict = DICT_CONTENTS
+        self.metadata_dict['user']=self.reference
+
+
         print("Initiating Slave Node {}".format(self.reference))
         if self.verbose:
             print("Verbose mode")
@@ -86,6 +106,7 @@ class SlaveNode(object):
         self.emulation_port = []
 
         self.arduino_COMS = self.connect_to_arduino()
+
 
 
     def connect_to_arduino(self):
@@ -112,8 +133,11 @@ class SlaveNode(object):
                                                 emulatedPort=self.emulation_port,
                                                 arduino_port=self.arduino_port)
 
-            self.is_arduino_connected = True
-            print('(node) Arduino connected')
+            if arduino_COMS.is_arduino_connected():
+                self.is_arduino_connected = True
+                print('(node) Arduino connected')
+            else:
+                self.is_arduino_connected = False
             return arduino_COMS
 
         except SerialException:
@@ -133,7 +157,7 @@ class SlaveNode(object):
         "polls" the arduino. Later, using the response of the arduino, a message is
         sent back to the master server as a response. The serial communications to
         arduino is performed using the SerialCommManager.SerialCommManager instance
-        in self.arduino_comms, which sends a "write_handshake" through the
+        in self.arduino_comms, which sends a handshake through the
         poll_arduino method.
 
         The communication with the master server is performed by writing the
@@ -150,6 +174,7 @@ class SlaveNode(object):
                     user=lab6,lab7,... [If user=X, all arduinos will respond.]
                     pin_number=integer,
                     pin_value=(0,1).
+        :type msg: str
 
         :return:
         """
@@ -162,11 +187,14 @@ class SlaveNode(object):
                     print("(node) CMD to arduino:  {}".format(pinNumber))
                 #This "try" block will look for KeyboardInterrupt events to close the program
 
-                t, channels = self.arduino_COMS.poll_arduino(
-                                    handshake_func=write_handshake,
+                poll_output = self.arduino_COMS.poll_arduino(
+                                    handshake_func=handshake_func,
                                     command=pinNumber)
-                point_data = self.convert_data(channels)
-                self.master_server.write_message(json.dumps(point_data))
+                if poll_output is not None:
+                    t, channels = poll_output
+                    point_data = self.convert_data(channels)
+                    self.master_server.write_message(json.dumps(point_data))
+
         else:
             self.send_message_on_serial_exception()
 
@@ -235,26 +263,32 @@ class SlaveNode(object):
                       .format(self.location,
                               time.strftime(TFORMAT)))
                 self.master_server = yield tornado.websocket.websocket_connect(self.location)
-                print('(node) Ready')
+                print('(node) Connection with master server started')
                 self.is_master_connected = True
             except socket.error as error:
                 if error.errno == 10061:
                     print('\n(node) Connection refused by host. Maybe it is not running? Waiting')
                     time.sleep(2)
                 self.is_master_connected = False
+                self.metadata_registered = False
             except HTTPError as error:
                 print('(node) Connection taking quite long... @{}'\
-                      .format(TFORMAT))
+                      .format(time.strftime(TFORMAT)))
 
 
         #Main loop for data acquisition/sending
         #Acquire data from master
         while self.is_master_connected :
             try:
+                if not self.metadata_registered:
+                    self.master_server.write_message(json.dumps(self.metadata_dict))
+                    self.metadata_registered=True
+
                 msg = yield self.master_server.read_message() #we may use a callback here, instead of the rest of this code block
             except UnboundLocalError:
                 print('\n(node)Connection refused by host. Maybe Master server is not running?')
                 self.is_master_connected = False
+                self.metadata_registered = False
                 raise HostConnectionError
 
             #Process data:
@@ -272,8 +306,6 @@ class SlaveNode(object):
                         self.is_arduino_connected = False
                         self.arduino_COMS.cleanup()
                         self.reconnect_to_arduino()
-
-
                 except ValueError as err:
                     print('(node) ValueError thrown')
                     print(err.args)
@@ -285,11 +317,13 @@ class SlaveNode(object):
                         raise err
                 except KeyboardInterrupt:
                     self.is_master_connected=False
+                    self.metadata_registered = False
                     raise
 
             else:
                 print('(node) Could not retrieve message from server. It may be disconnected.')
                 self.is_master_connected = False
+                self.metadata_registered = False
                 #raise KeyboardInterrupt
 
 
@@ -304,7 +338,7 @@ class SlaveNode(object):
         :param list_of_data: typically a list with values 0-(2^12-1) for a number of analog channels
 
         """
-        list_of_data = [round(datum[0]*ADC_MAXVOLT/ADC_MAXINT,5) for datum in list_of_data]
+        list_of_data = [round(datum*ADC_MAXVOLT/ADC_MAXINT,5) for datum in list_of_data]
         list_of_data[2] = list_of_data[2]*100  #Temperature conversion
         point_data =  {
             'user': self.reference,
@@ -385,19 +419,18 @@ if __name__ == "__main__":
 
     while True:
         try:
-            print('\n---------------------------------\nStarting Slave node\n---------------------------------\n')
+            print('\n-----------------------------\nStarting Slave node  {}\n-----------\
+------------------\n'.format(args.reference))
             tornado.ioloop.IOLoop.instance().run_sync(slaveNodeInstance.keepalive_ws)
         except ArduinoConnectionError as err:
             print(err.args)
             print('(node) Problem found in serial connection. Exiting')
-        except TypeError as err:
-            print('(node) TypeError thrown')
-            print(err.args)
+        #except TypeError as err:
+        #    print('(node) TypeError thrown')
+        #    print(err)
         except ValueError as err:
             print(type(err))
             print(err.args)
-        #except TypeError as err:  #Error thrown when disconnecting the serial connection AND RECONNECTING!
-        #    print('(node) Problem found in serial connection with arduino. Maybe the serial cable was disconnected.')
         except RuntimeError as err:
             if err.args[0]=='generator raised StopIteration':
                 print('(node) Cannot find arduino connection')
@@ -406,6 +439,7 @@ if __name__ == "__main__":
         except HostConnectionError:
             print('(node) Master server is disconnected.')
             slaveNodeInstance.is_master_connected = False
+            slaveNodeInstance.metadata_registered = False
             time.sleep(10)
         except KeyboardInterrupt:
             tornado.ioloop.IOLoop.instance().stop()

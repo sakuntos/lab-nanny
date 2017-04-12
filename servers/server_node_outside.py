@@ -20,7 +20,8 @@ if EMULATE:
 import socket
 from serial.serialutil import SerialException
 from tornado import websocket, web, ioloop
-from communications.SerialCommManager import write_handshake
+from communications.SerialCommManager import write_handshake,\
+                                             handshake_func
 
 import threading
 import SimpleHTTPServer
@@ -88,7 +89,7 @@ class WebSocketHandler(websocket.WebSocketHandler):
             print 'Message from web received. Init comms'
             print 'Pin Value',pinValue
             print 'Initial pin calculated {}, value {}, sending {}----------------'.format(split_message[0], pinValue,(pinNumber))
-        self.arduino_serial_comms.poll_arduino(handshake_func=write_handshake,
+        self.arduino_serial_comms.poll_arduino(handshake_func=handshake_func,
                                                command=pinNumber)
     def convert_message_to_command(self,message):
         split_message = message.split(',')

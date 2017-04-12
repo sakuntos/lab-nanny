@@ -21,38 +21,25 @@ X0E = serial.to_bytes([0x0e])
 NUM_CHANNELS = 9 # number of total channels (time axis + ADC channels 0-7)
 DATA_LEN = 1 # numbers in each array that serial.print does in arduino
 
-def standard_handshake(serialinst,verbose=False):
+def handshake_func(serialinst,verbose=False,command='A'):
     """ Send/receive char to synchronize data gathering
-
-
     """
-    nbytes = serialinst.write("A") # can write anything here, just a single byte (any ASCII char)
-    if verbose:
-        print('(std) Wrote bytes to serial port: {}'.format( nbytes))
-    #wait for byte to be received before returning
-    st = time.clock()
-    try:
-        byte_back = serialinst.readline()
-    except SerialTimeoutException:
-        serialinst.close()
-        raise ArduinoConnectionError
-    et = time.clock()
-    if verbose:
-        print('(std) Received handshake data from serial port: {}'.format(byte_back))
-        print('(std) Time between send and receive: {}s'.format(et-st))
-
-def write_handshake(serialinst,verbose=False,command='A'):
-    """ Send/receive pair of bytes to synchronize data gathering """
-    nbytes = serialinst.write(command.encode()) # can write anything here, just a single byte (any ASCII char)
-    if verbose:
-        print('(handshake) Wrote bytes to serial port:{} '.format(nbytes))
-    #wait for byte to be received before returning
-    st = time.clock()
-    byte_back = serialinst.readline()
-    et = time.clock()
-    if verbose:
-        print('(handshake) Received handshake data from serial port: {}'.format(byte_back))
-        print('(handshake) Time between send and receive: {}s'.format(et-st))
+    if serialinst.isOpen():
+        nbytes = serialinst.write(command.encode()) # can write anything here, just a single byte (any ASCII char)
+        if verbose:
+            print('(HSK) Wrote bytes to serial port: {}'.format(nbytes))
+        #wait for byte to be received before returning
+        st = time.clock()
+        try:
+            if (serialinst.inWaiting()>0):
+                byte_back = serialinst.readline()
+                et = time.clock()
+                if verbose:
+                    print('(HSK) Received handshake data from serial port: {}'.format(byte_back))
+                    print('(HSK) Time between send and receive: {}s'.format(et-st))
+        except SerialTimeoutException:
+            serialinst.close()
+            raise ArduinoConnectionError
 
 
 class SerialCommManager:
@@ -93,13 +80,17 @@ class SerialCommManager:
             self.connection_settings['port'] = port
         self.init_arduino_connection()
 
-
+    def is_arduino_connected(self):
+        return self.ser.isOpen()
 
     def init_arduino_connection(self):
         try:
             if self.verbose:
                 print('(SCM) Trying to connect to serial')
             self.ser = serial.Serial(**self.connection_settings)
+            # After opening the serial port, we wait for a bit until it's ready.
+            # Otherwise, we might block the serial reading (for example, sleep(0.5)
+            # blocks the MEGA)
             time.sleep(1)
             print('(SCM) Connection Acquired')
 
@@ -108,6 +99,9 @@ class SerialCommManager:
         except SerialException as err:
             pass
 
+    def read_data_from_arduino(self):
+        if self.ser.inWaiting():
+            return self.ser.readline().decode()
 
     def get_arduino_port(self):
         """ Obtain the serial port being used by arduino using the "port_grep" function
@@ -126,7 +120,7 @@ class SerialCommManager:
         return firstPort[0]
 
 
-    def poll_arduino(self, handshake_func=standard_handshake,**args):
+    def poll_arduino(self, handshake_func=handshake_func,**args):
         """
     	Initialise serial port and listen for data until timeout.
 
@@ -147,36 +141,32 @@ class SerialCommManager:
             handshake_func(self.ser,verbose=self.verbose,**args)
 
         #get data
-            data = self.ser.readline().decode()
-
+            data = self.read_data_from_arduino()
             #Fault conditions:
             # Empty data (just /r or /n)
-
             if data is not None:
-                if data.count(',')== NUM_CHANNELS:
+                #not prescribed number of channels
+                # This might have the effect of reading erroneously (for example, if the
+                # serial connection stops before reading the final values)
+                # Need to check for data integrity at the node implementation.
                     ##PROCESS
-                    et = time.clock() - st
-                    if self.verbose:
-                        print('(SCM) ------------------------\n(SCM) INIT POLLING ARDUINO:\n(SCM)------------------------')
-                        print('(SCM) Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
+                et = time.clock() - st
+                if self.verbose:
+                    print('(SCM) ------------------------\n(SCM) INIT POLLING ARDUINO:\n(SCM)------------------------')
+                    print('(SCM) Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
+                #make string into list of strings, comma separated
+                data_list = data.split(',')
+                # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
+                data_array = np.array([float(i) for i in data_list[:-1]])
 
-                    #make string into list of strings, comma separated
-                    data_list = data.split(',')
+                self.channels = data_array[1:]
+                self.time_axis = data_array[0]
+                if self.verbose:
+                    print('(SCM) Data acquisition complete. Time spent {0:.2e}\n(SCM)------------------------'.format( time.clock() - st))
 
-                    # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
-                    data_array = np.array([float(i) for i in data_list[:-1]])
-
-                    #if self.verbose:
-                    #print('Length of array: {}'.format(len(data_array)))
-                    data_array_3d = data_array.reshape(NUM_CHANNELS,DATA_LEN)
-
-                    if DATA_LEN>0:
-                        self.time_axis = data_array_3d[0]
-                        self.channels = [data_array_3d[ii+1] for ii in range(NUM_CHANNELS - 1)]
-                    if self.verbose:
-                        print('(SCM) Data acquisition complete. Time spent {0:.2e}\n(SCM)------------------------'.format( time.clock() - st))
-
-                    return self.time_axis, [channel for channel in self.channels]
+                return self.time_axis, self.channels
+            else:
+                return None
 
         except ValueError as err:    #If the cable gets disconnected
             self.ser.close()
@@ -186,6 +176,7 @@ class SerialCommManager:
             print(err.args)
             self.ser.close()
             raise ArduinoConnectionError
+
 
             # Every so often, arduino will fail to read the values. Uncommenting the following "else" bit will count those
             # failures as a SerialException.
@@ -213,10 +204,11 @@ class ArduinoConnectionError(Exception):
 
 def main():
     try:
-        fetcher = SerialCommManager(0.001, verbose=False)
-        pinNumber = chr(14)
-        dataList = fetcher.poll_arduino(handshake_func=write_handshake,
+        fetcher = SerialCommManager(0.001, verbose=True)
+        pinNumber = 'A'
+        dataList = fetcher.poll_arduino(handshake_func=handshake_func,
                                         command=pinNumber)
+        print(dataList)
 
         return True
     except Exception as err: #If the arduino is not connected

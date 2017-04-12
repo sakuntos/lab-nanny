@@ -26,8 +26,6 @@
     // n     = number of points
     // dataX = data holder for the X channel
 
-    //var connection = new WebSocket('ws://pc0751.ad.icfo.net:8001/client_ws');
-
     var n           = 1000,
         periodicity = 0.1,
         random      = d3.randomNormal(0, .2),
@@ -75,7 +73,7 @@
                 return y_temp(d);
             });
 
-    var     condition_blue = {control_user:"lab6",
+    var     condition_blue = {control_user:"lab7",
                            control:"ch2",
                            max_value:24,
                            min_value:19,
@@ -84,27 +82,27 @@
                            message:"Blue is unlocked"};
 
     var     lab6dictionary = {name:"lab6",
-                              pins:[11,13,17],
-                              analogchannels:["ch0","ch1","ch2","ch3","ch4","ch5","ch6"],
-                              data:{},
-                              lines:{},
-                              representation:{"ch2":temp_line},
-                              buttons:[],
-                              connection_text:[],
-                              graph_area:"#graph0",
-                              connection_text_area:"#connection_text_lab6",
-                              conditions:[condition_blue,]},
-            lab7dictionary = {name:"lab7",
                               pins:[13,17,25],
-                              analogchannels:["ch0",],
+                              analogchannels:["ch0","ch1","ch2"],
                               data:{},
                               lines:{},
                               representation:{},
                               buttons:[],
                               connection_text:[],
+                              graph_area:"#graph0",
+                              connection_text_area:"#connection_text_lab6",
+                              conditions:[]},
+            lab7dictionary = {name:"lab7",
+                              pins:[11,13,17],
+                              analogchannels:["ch0","ch1","ch2","ch3","ch4" ],
+                              data:{},
+                              lines:{},
+                              representation:{"ch2":temp_line},
+                              buttons:[],
+                              connection_text:[],
                               graph_area:"#graph1",
                               connection_text_area:"#connection_text_lab7",
-                              conditions:[]},
+                              conditions:[condition_blue,]},
             mainObj = {};
 
     mainObj[lab6dictionary.name]=lab6dictionary;

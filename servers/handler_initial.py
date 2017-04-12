@@ -15,7 +15,7 @@ from communications import SerialCommManager as SCM
 import socket
 from serial.serialutil import SerialException
 from tornado import websocket, web, ioloop
-from communications.SerialCommManager import write_handshake
+from communications.SerialCommManager import write_handshake, handshake_func
 
 SOCKETNAME = r'/ArduMon1'
 SOCKETNAME2 = r'/ArduMon2'
@@ -40,7 +40,7 @@ class WebSocketHandler(websocket.WebSocketHandler):
         return True
 
     def on_message(self, message):
-        self.comm_mgr.poll_arduino(handshake_func=write_handshake)
+        self.comm_mgr.poll_arduino(handshake_func=handshake_func)
         print message
 
   # Our function to send new (random) data for charts
