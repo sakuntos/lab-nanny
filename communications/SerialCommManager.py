@@ -180,6 +180,12 @@ class SerialCommManager:
             print(err.args)
             self.ser.close()
             raise ArduinoConnectionError
+        except IndexError as err:
+            #maybe "pass" ?
+            print("Index error found!!!!!")
+            #time.sleep(2)
+            self.ser.close()
+            raise ArduinoConnectionError
 
 
             # Every so often, arduino will fail to read the values. Uncommenting the following "else" bit will count those
