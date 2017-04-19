@@ -1,10 +1,7 @@
 """
 lab-nanny's slave server interface to the arduino
 
-It can perform two types of handshake:
-- Standard: just collect data
-- Write: it sends a "command" back to arduino. In the simple case of the arduino_firmware_io, it is a byte with a value
- near 65 ('A'), which turns ON/OFF a digital channel.
+
 
 Author: David Paredes
 19/05/2015
@@ -23,6 +20,11 @@ DATA_LEN = 1 # numbers in each array that serial.print does in arduino
 
 def handshake_func(serialinst,verbose=False,command='A'):
     """ Send/receive char to synchronize data gathering
+
+    the function "handshake_func" sends a "command" to arduino using an
+    instance of a serial connection.
+    The commands, as recognized by the arduino_firmware_io, are single bytes
+    with a value near 65 ('A'), which turns ON/OFF a digital channel.
     """
     if serialinst.isOpen():
         nbytes = serialinst.write(command.encode()) # can write anything here, just a single byte (any ASCII char)
@@ -37,6 +39,7 @@ def handshake_func(serialinst,verbose=False,command='A'):
                 if verbose:
                     print('(HSK) Received handshake data from serial port: {}'.format(byte_back))
                     print('(HSK) Time between send and receive: {}s'.format(et-st))
+                return byte_back
         except SerialTimeoutException:
             serialinst.close()
             raise ArduinoConnectionError
@@ -138,8 +141,9 @@ class SerialCommManager:
         try:
             #ser = serial.Serial(**self.connection_settings)
             st = time.clock()
-            handshake_func(self.ser,verbose=self.verbose,**args)
-
+            byte_back = handshake_func(self.ser,verbose=self.verbose,**args)
+            if self.verbose:
+                print('(SCM) Byte back from handshake {}'.format(byte_back))
         #get data
             data = self.read_data_from_arduino()
             #Fault conditions:

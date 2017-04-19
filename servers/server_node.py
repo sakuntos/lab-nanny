@@ -39,7 +39,7 @@ from serial.serialutil import SerialException
 from communications import SerialCommManager as SCM
 from communications.SerialCommManager import ArduinoConnectionError,\
                                             handshake_func
-from server_master import CONFKEYWORD
+from server_master import METAKEYWORD
 
 import json
 import time
@@ -74,7 +74,7 @@ DICT_CONTENTS = {
             'ch4' : 'empty',
             'ch5' : 'empty',
             'ch6' : 'empty',
-            CONFKEYWORD : True
+            METAKEYWORD : True
         }
 
 class SlaveNode(object):

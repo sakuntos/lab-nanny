@@ -14,6 +14,9 @@ cur = conn.cursor()
 cur.execute('select x,ch2,ch4 from lab7 where error=? and x>?',(0,1489622400.0,))
 myvals = cur.fetchall()
 
+cur.execute('select x,ch2,ch4 from lab7 where error=? and x>?',(0,1489622400.0,))
+myvals = cur.fetchall()
+
 timestamps = []
 temperatures = []
 laser_volt = []
@@ -26,8 +29,8 @@ dts = map(datetime.datetime.fromtimestamp,timestamps)
 fds = dates.date2num(dts)
 
 fig = plt.figure()
-ax = fig.add_subplot(111)
-temp_line = ax.plot(fds,temperatures,'--', markersize = 3)
+ax = fig.add_subplot(211)
+temp_line = ax.plot(fds,temperatures,'+--', markersize = 3)
 plt.ylabel('Temperature [Celsius]')
 
 #Format
@@ -38,7 +41,9 @@ ax.xaxis.grid(True)
 plt.subplots_adjust(bottom=.2   )
 
 bx = ax.twinx()
-laser_line = bx.plot(fds,laser_volt,color='orange',markersize=3)
+laser_line = bx.plot(fds,laser_volt,'o--',color='orange',markersize=3)
 plt.ylabel('Voltage [V]')
+
+cx = fig.add_subplot(212)
 
 plt.show()

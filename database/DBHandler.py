@@ -8,6 +8,7 @@ OBSERVATION_TABLE_COLTYPES = ['INTEGER PRIMARY KEY AUTOINCREMENT','INTEGER']
 METADATA_TABLE_COLNAMES = ['time','labID','metadata']
 METADATA_TABLE_COLTYPES = ['REAL','INTEGER','TEXT']
 
+
 class DBHandler(object):
     def __init__(self, db_name='example.db',verbose=False):
         self.db = sqlite3.connect(db_name)

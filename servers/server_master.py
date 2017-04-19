@@ -62,7 +62,8 @@ DB_PERIODICITY    = 30000   #Save data to db every...
 
 TFORMAT = '%y/%m/%d %H:%M:%S'
 
-CONFKEYWORD = 'conf'
+METAKEYWORD = 'meta'
+CONNCLOSEDSTR = 'Connection closed'
 
 
 class MasterServer(object):
@@ -100,7 +101,8 @@ class MasterServer(object):
         # Create instance of the CommsHandler to mediate communications between
         # node and client handlers
         self.comms_handler = CommsHandler()
-        self.comms_handler.bind_to(self.db_metadata_append)
+        # Add callback db_metadata_append upon change to the metadata in nodes
+        self.comms_handler.bind_to_metadata_change(self.db_metadata_append)
         # Also, start communication with the database
         self.db_handler = DBHandler(db_name=DEFAULTDBNAME)
         # Init program
@@ -283,8 +285,10 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
 
         NodeHandler.node_list.append(self)
         self.id = uuid.uuid4().hex
-        print('(NDH) New NODE {}. (out of {}) @ {}'\
-              .format(self.request.remote_ip,
+        ip = self.request.remote_ip
+        print('(NDH) New NODE {} ({}). (out of {}) @ {}'\
+              .format(socket.getfqdn(ip),
+                      ip,
                       len(NodeHandler.node_list),
                       time.strftime(TFORMAT)))
         print('(NDH) UUID: {}'.format(self.id))
@@ -301,7 +305,7 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
         ## For example, we can write a "configure" key in the dictionary
         message_dict = json.loads(message)
 
-        if CONFKEYWORD not in message_dict:
+        if METAKEYWORD not in message_dict:
 
             if self.verbose:
                 if not message_dict['error']:
@@ -339,10 +343,15 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
 
 
     def on_close(self):
-        print('(NDH) Connection with {} closed @{}'.format(self.id,
-                                                           time.strftime(TFORMAT)))
+        # Add log to metadata table in database
+        self.__comms_handler.add_metadata(self.id,CONNCLOSEDSTR)
+        # Remove nodehandler from the comms_handler instance and the class'
+        # node_list.
         self.__comms_handler.remove_key(self.id)
         NodeHandler.node_list.remove(self)
+        ip = self.request.remote_ip
+        print('(NDH) Connection with {} closed @{}'.format(ip,
+                                                           time.strftime(TFORMAT)))
 
     def check_origin(self, origin):
         #TODO: change this to actually check the origin
@@ -391,7 +400,7 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
         """
         # We could do here the configuration of the node, like a dictionary with the channels exposed
         ClientHandler.client_list.append(self)
-        print('(CLH) New connection from {}. Total of slave nodes: {} @ {}'\
+        print('(CLH) New connection from {}. Total of clients: {} @ {}'\
               .format(self.request.remote_ip,
                       len(ClientHandler.client_list),
                       time.strftime(TFORMAT)))
@@ -472,37 +481,61 @@ class CommsHandler(object):
     communication purposes
 
     It also keeps a dictionary with a reference to the last data sent
-    from each of the nodes.
+    (self.last_data) with the keys being the ids of the NodeHandler
+    instances, and another one (self.metadata) which stores the metadata
+    (that is, the "contents" of each channel in the self.last_data
+    dictionaries).
+
+    Whenever the connection between the master and the node is (re)
+    established, the metadata corresponding to that id needs to be
+    recorded by an external class. To do this, we use an observer
+    pattern in which the external class observes changes to a property
+    (in this case, self.last_metadata_id) from the outside using the
+    self.bind_to function and perform some callback whenever this
+    value changes.
     """
     def __init__(self):
         self.nodes = NodeHandler.node_list       #list
         self.clients = ClientHandler.client_list #list
+        #Data dictionary
         self.last_data = {}                #dictionary
-        self.metadata = {}
+        #Metadata dictionary
+        self.metadata = {}                 #dictionary
         self._last_metadata_id = []
-        self._observers= []
+        self._metadata_observers= []
+
 
     def get_last_metadata_id(self):
         return self._last_metadata_id
 
     def set_last_metadata_id(self, value):
-        print('setting new metadata id')
+        #print('setting new metadata id')
         self._last_metadata_id = value
-        for callback in self._observers:
+        for callback in self._metadata_observers:
             callback(value)
 
     last_metadata_id = property(get_last_metadata_id,set_last_metadata_id)
 
-    def bind_to(self,callback):
-        self._observers.append(callback)
+    def bind_to_metadata_change(self, callback):
+        ''' Binds callbacks to changes in the values of self._last_metadata_id
 
-    def add_metadata(self,id,dictionary):
-        self.metadata[id] = dictionary
+        This function is used to add metadata to the database upon (re)connection
+        of the server/client link.
+
+        :param callback:
+        :return:
+        '''
+        self._metadata_observers.append(callback)
+
+    def add_metadata(self, id, contents):
+        self.metadata[id] = contents
         self.last_metadata_id = id # This triggers the callback
 
     def remove_key(self,id):
         self.last_data.pop(id,None)
         self.metadata.pop(id,None)
+
+########################################
 
 def broadcast(list_of_endpoints, msg):
     """ Broadcasts a message to a list of endpoints using the "write_message"
