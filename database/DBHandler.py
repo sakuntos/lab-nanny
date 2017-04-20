@@ -217,10 +217,8 @@ class DBHandler(object):
         # 4: Add entry in table with suitable name
         self.add_data_from_dict(dictionary,observationID)
 
-    def register_new_metadata(self, dictionary):
-
+    def register_new_metadata(self, user, dictionary):
         # 1: Check if table exists
-        user = dictionary["user"]
         if not self.check_table_exists(user):
             # Creates new table with suitable properties
             # and adds an ID to the laboratories list

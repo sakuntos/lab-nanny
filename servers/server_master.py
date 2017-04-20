@@ -111,11 +111,15 @@ class MasterServer(object):
     def run(self):
         """ Main function of the MasterServer class.
 
-        It creates a tornado web application with two websocket handlers: one
-        for the nodes, and one for the clients, listening on the same port
-        (self.socket_port), but using different names.
+        It creates a tornado web application with two websocket handlers and
+        one web RequestHandler: the two websockets are one for the nodes,
+        and one for the clients, listening on the same port
+        (self.socket_port), but using different names (the defauls are
+        '/nodes_ws' and '/clients_ws' respectively); the web request handler
+        shows information about the status of the master server using the same
+        socket and a different address ('/status').
 
-        Then, it initialises two periodic callbacks:
+        Afterwards, this method initialises two periodic callbacks:
         - One that manages the node/client communications, typically with a
         sub-second periodicity
         - Another one to store long-term traces of the data to a database
@@ -240,7 +244,16 @@ class MasterServer(object):
         The entry in the database is composed of a timestamp, a username, and the JSON string.
         """
         print('(MASTER) Updating metadata')
-        self.db_handler.register_new_metadata(self.comms_handler.metadata[idx])
+        # Metadata can be updated upon (re)connection, or when the connection
+        # is closing. When (re)connecting, the metadata is a dictionary
+        # which contains, amongst others, a 'user' key. This is not the
+        # case upon closing the connection, thus we need the user from
+        # somewhere else.
+        if isinstance(self.comms_handler.metadata[idx],dict):
+            user = self.comms_handler.metadata[idx]['user']
+        else:
+            user = self.comms_handler.last_data[idx]['user']
+        self.db_handler.register_new_metadata(user,self.comms_handler.metadata[idx])
 
 
     def on_close(self):
@@ -561,8 +574,12 @@ def signal_handler(signum,frame):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-pr","--periodicity",help="address of the master server websocket",
-                        type=int,default=100)
+    parser.add_argument("-pr","--periodicity",
+                        help="periodicity to poll nodes",
+                        type=int,default=PERIODICITY)
+    parser.add_argument("-dbpr","--database_periodicity",
+                        help="periodicity of saving data to database",
+                        type=int,default=DB_PERIODICITY)
     parser.add_argument("-v","--verbose",help="Activate verbose",
                         type=int,default=0)
     args = parser.parse_args()
