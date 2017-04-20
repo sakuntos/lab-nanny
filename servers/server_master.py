@@ -44,6 +44,7 @@ import signal
 import argparse
 import time
 from database.DBHandler import DBHandler as DBHandler
+from servers.header import MST_HEADER
 
 import uuid
 import socket
@@ -142,19 +143,21 @@ class MasterServer(object):
             self.HTTPserver = self.application.listen(self.socketport)
             fqdn = socket.getfqdn()
             alias = socket.gethostbyname(socket.gethostname())
-            print('Status page  @ {}:{}{},  ({})'.format(fqdn,
+            print('Setting up connections:\n-----------------------------------')
+            print('Status page:    @ {}:{}{},     ({})'.format(fqdn,
                                                          self.socketport,
                                                          self.status_addr,
                                                          alias))
             print('Websockets opened:')
-            print('-Client WS EST @ {}:{}{},  ({})'.format(fqdn,
+            print('-Client WS EST  @ {}:{}{},  ({})'.format(fqdn,
                                                            self.socketport,
                                                            self.client_socketname,
                                                            alias))
-            print('-Nodes WS EST  @ {}:{}{},  ({})'.format(fqdn,
+            print('-Nodes WS EST   @ {}:{}{},   ({})'.format(fqdn,
                                                            self.socketport,
                                                            self.slave_socketname,
                                                            alias))
+            print('-----------------------------------')
 
         except socket.error as error:
             #Catch the error if the connections are already present:
@@ -178,7 +181,7 @@ class MasterServer(object):
             ioloop.IOLoop.instance().start()
         except KeyboardInterrupt:
             ioloop.IOLoop.instance().stop()
-            print('Exiting gracefully... @{}'.format(time.strftime(TFORMAT)))
+            print('(MST  {}) Exiting gracefully... '.format(time.strftime(TFORMAT)))
         finally:
             self.on_close()
 
@@ -226,8 +229,8 @@ class MasterServer(object):
         ## CHECK HERE IF THE METADATA HAS BEEN ADDED
         num_connected_devices = len(self.comms_handler.last_data)
         if num_connected_devices>0:
-            print('(MASTER) Adding {} entries to DB @{}'\
-                  .format(num_connected_devices,time.strftime(TFORMAT)))
+            print('(MST  {}) Adding {} entries to DB '\
+                  .format(time.strftime(TFORMAT),num_connected_devices))
 
         for id in self.comms_handler.last_data:
             datadict = self.comms_handler.last_data[id]
@@ -243,7 +246,7 @@ class MasterServer(object):
         This function generates an entry in the database for each new node
         The entry in the database is composed of a timestamp, a username, and the JSON string.
         """
-        print('(MASTER) Updating metadata')
+        print('(MST  {}) Updating metadata'.format(time.strftime(TFORMAT)))
         # Metadata can be updated upon (re)connection, or when the connection
         # is closing. When (re)connecting, the metadata is a dictionary
         # which contains, amongst others, a 'user' key. This is not the
@@ -299,11 +302,11 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
         NodeHandler.node_list.append(self)
         self.id = uuid.uuid4().hex
         ip = self.request.remote_ip
-        print('(NDH) New NODE {} ({}). (out of {}) @ {}'\
-              .format(socket.getfqdn(ip),
+        print('(NDH  {}) New NODE {} ({}). (out of {}) '\
+              .format(time.strftime(TFORMAT),
+                      socket.getfqdn(ip),
                       ip,
-                      len(NodeHandler.node_list),
-                      time.strftime(TFORMAT)))
+                      len(NodeHandler.node_list)))
         print('(NDH) UUID: {}'.format(self.id))
 
     def on_message(self, message):
@@ -363,8 +366,10 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
         self.__comms_handler.remove_key(self.id)
         NodeHandler.node_list.remove(self)
         ip = self.request.remote_ip
-        print('(NDH) Connection with {} closed @{}'.format(ip,
-                                                           time.strftime(TFORMAT)))
+        user = self.user
+        print('(NDH  {}) Connection with {} ({}) closed '\
+              .format(time.strftime(TFORMAT),
+                      ip, user))
 
     def check_origin(self, origin):
         #TODO: change this to actually check the origin
@@ -413,10 +418,10 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
         """
         # We could do here the configuration of the node, like a dictionary with the channels exposed
         ClientHandler.client_list.append(self)
-        print('(CLH) New connection from {}. Total of clients: {} @ {}'\
-              .format(self.request.remote_ip,
-                      len(ClientHandler.client_list),
-                      time.strftime(TFORMAT)))
+        print('(CLH  {}) New connection from {}. Total of clients: {}'\
+              .format(time.strftime(TFORMAT),
+                      self.request.remote_ip,
+                      len(ClientHandler.client_list)))
 
     def on_message(self, message):
         """ Callback executed upon message reception from the client.
@@ -428,15 +433,16 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
         :return:
         """
         if self.verbose:
-            print('(CLH) Message received from client: {} @ {}'\
-                  .format(message,
-                          time.strftime(TFORMAT)))
+            print('(CLH  {}) Message received from client: {}'\
+                  .format(time.strftime(TFORMAT),
+                          message))
         for node in self.__comms_handler.nodes:
             node.write_message(message)
 
 
     def on_close(self):
-        print('(CLH) Connection closed')
+        print('(CLH  {}) Connection closed'\
+              .format(time.strftime(TFORMAT)))
         ClientHandler.client_list.remove(self)
         print(ClientHandler.client_list)
 
@@ -573,6 +579,8 @@ def signal_handler(signum,frame):
     tornado.ioloop.IOLoop.instance().stop()
 
 if __name__ == "__main__":
+    print(MST_HEADER)
+    print
     parser = argparse.ArgumentParser()
     parser.add_argument("-pr","--periodicity",
                         help="periodicity to poll nodes",

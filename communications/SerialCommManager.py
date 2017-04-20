@@ -12,6 +12,7 @@ import serial
 from serial.serialutil import SerialTimeoutException, SerialException
 import numpy as np
 from serial.tools.list_ports import grep as port_grep
+from servers.server_master import TFORMAT
 import logging
 
 X0E = serial.to_bytes([0x0e])
@@ -71,7 +72,9 @@ class SerialCommManager:
             self.connection_settings['dsrdtr'] = True
             self.connection_settings['port'] = port
         elif arduino_port:
-            print('(SCM) Given port: {}'.format(arduino_port))
+            print('(SCM  {}) Given port: {}'\
+                  .format(time.strftime(TFORMAT),
+                          arduino_port))
             self.connection_settings['port']=arduino_port
         else:
             try:
@@ -79,7 +82,9 @@ class SerialCommManager:
             except StopIteration:
                 print('Arduino not found')
                 raise KeyboardInterrupt
-            print('(SCM) Trying port: {}'.format(port))
+            print('(SCM  {}) Trying port: {}'\
+                  .format(time.strftime(TFORMAT),
+                          port))
             self.connection_settings['port'] = port
         self.init_arduino_connection()
 
@@ -89,13 +94,15 @@ class SerialCommManager:
     def init_arduino_connection(self):
         try:
             if self.verbose:
-                print('(SCM) Trying to connect to serial')
+                print('(SCM  {}) Trying to connect to serial'\
+                      .format(time.strftime(TFORMAT)))
             self.ser = serial.Serial(**self.connection_settings)
             # After opening the serial port, we wait for a bit until it's ready.
             # Otherwise, we might block the serial reading (for example, sleep(0.5)
             # blocks the MEGA)
             time.sleep(1)
-            print('(SCM) Connection Acquired')
+            print('(SCM  {}) Connection Acquired'\
+                    .format(time.strftime(TFORMAT)))
 
         except ValueError as err:
             raise ArduinoConnectionError
@@ -119,7 +126,9 @@ class SerialCommManager:
             firstPort = myPort_generator.next()  # .__next__() # for python3
         except AttributeError:
             firstPort = myPort_generator.__next__()
-        print('(SCM) Arduino found in port {}'.format(firstPort[0]))
+        print('(SCM  {}) Arduino found in port {}'\
+              .format(time.strftime(TFORMAT),
+                      firstPort[0]))
         return firstPort[0]
 
 
@@ -223,7 +232,8 @@ def main():
         return True
     except Exception as err: #If the arduino is not connected
         print(err.args)
-        print('(SCM) Arduino not connected: please, connect the arduino and try running the node script again.')
+        print('(SCM  {}) Arduino not connected: please, connect the arduino and try running the node script again'\
+                      .format(time.strftime(TFORMAT)))
 
 
 
