@@ -100,7 +100,7 @@ class SerialCommManager:
             # After opening the serial port, we wait for a bit until it's ready.
             # Otherwise, we might block the serial reading (for example, sleep(0.5)
             # blocks the MEGA)
-            time.sleep(1)
+            time.sleep(1.5)
             print('(SCM  {}) Connection Acquired'\
                     .format(time.strftime(TFORMAT)))
 
@@ -155,29 +155,35 @@ class SerialCommManager:
                 print('(SCM) Byte back from handshake {}'.format(byte_back))
         #get data
             data = self.read_data_from_arduino()
+            et = time.clock() - st
+            if self.verbose:
+                print('(SCM) ------------------------\n(SCM) INIT POLLING ARDUINO:\n(SCM)------------------------')
+                print('(SCM) Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
             #Fault conditions:
             # Empty data (just /r or /n)
-            if data is not None:
+            if (data is not None):
+                data_list = data.split(',')
                 #not prescribed number of channels
                 # This might have the effect of reading erroneously (for example, if the
                 # serial connection stops before reading the final values)
                 # Need to check for data integrity at the node implementation.
                     ##PROCESS
-                et = time.clock() - st
-                if self.verbose:
-                    print('(SCM) ------------------------\n(SCM) INIT POLLING ARDUINO:\n(SCM)------------------------')
-                    print('(SCM) Time reading data (s): {0:.2e},  data: {1}'.format(et,repr(data)))
-                #make string into list of strings, comma separated
-                data_list = data.split(',')
-                # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
-                data_array = np.array([float(i) for i in data_list[:-1]])
+                if len(data_list)>1:
+                    #make string into list of strings, comma separated
 
-                self.channels = data_array[1:]
-                self.time_axis = data_array[0]
-                if self.verbose:
-                    print('(SCM) Data acquisition complete. Time spent {0:.2e}\n(SCM)------------------------'.format( time.clock() - st))
+                    # make list of strings into 1D numpy array of floats (ignore last point as it's an empty string)
+                    data_array = np.array([float(i) for i in data_list[:-1]])
 
-                return self.time_axis, self.channels
+                    #print(data_array)
+                    self.channels = data_array[1:]
+                    self.time_axis = data_array[0]
+
+                    if self.verbose:
+                        print('(SCM) Data acquisition complete. Time spent {0:.2e}\n(SCM)------------------------'.format( time.clock() - st))
+
+                    return self.time_axis, self.channels
+                else:
+                    return None
             else:
                 return None
 
@@ -190,11 +196,10 @@ class SerialCommManager:
             self.ser.close()
             raise ArduinoConnectionError
         except IndexError as err:
-            print("Index error found!!!!!")
-            self.ser.flush()
-            ##time.sleep(2)
-            #self.ser.close()
-            #raise ArduinoConnectionError
+            self.ser.flushInput()
+            self.ser.flushOutput()
+            self.ser.close()
+            raise ArduinoConnectionError
 
 
             # Every so often, arduino will fail to read the values. Uncommenting the following "else" bit will count those
