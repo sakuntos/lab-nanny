@@ -66,6 +66,4 @@ repumper_line = bx.plot(fds, repump_volt, '<--', color='indianred', markersize=3
                         label='repumper')
 plt.legend()
 plt.ylabel('Voltage [V]', color='orange')
-
-
 plt.show()

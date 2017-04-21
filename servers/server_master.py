@@ -67,6 +67,15 @@ METAKEYWORD = 'meta'
 CONNCLOSEDSTR = 'Connection closed'
 
 
+
+condition_trap = {'obs_lab':'lab7',
+                  'obs_ch':'ch4',
+                  'obs_range':(1,1.3),
+                  'target_lab':'lab7',
+                  'target_ch':13,
+                  'target_val':1}
+
+
 class MasterServer(object):
     """ Class that runs the Master Server for lab-nanny.
 
@@ -98,6 +107,7 @@ class MasterServer(object):
         self.callback                = []
         self.dbcallback              = []
         self.HTTPserver              = []
+        self._conditions             = []  # list of dictionaries
 
         # Create instance of the CommsHandler to mediate communications between
         # node and client handlers
@@ -107,6 +117,10 @@ class MasterServer(object):
         # Also, start communication with the database
         self.db_handler = DBHandler(db_name=DEFAULTDBNAME)
         # Init program
+        self._conditions.append(condition_trap)
+
+
+
         self.run()
 
     def run(self):
@@ -204,11 +218,12 @@ class MasterServer(object):
         try:
             # If the NodeHandler decides to write messages to the clients upon
             # reception of each message, comment this line
-            broadcast(self.comms_handler.clients,self.comms_handler.last_data)
+            ClientHandler.broadcast(self.comms_handler.last_data)
             # Write a command with no side consequences. The 'X' ensures that
             # all nodes reply
             msg = DEFAULTMESSAGE
             broadcast(self.comms_handler.nodes,msg)
+            self.check_conditions()
 
         except WebSocketClosedError:
             print('Websocket closed')
@@ -262,12 +277,35 @@ class MasterServer(object):
     def on_close(self):
         self.db_handler.close()
 
+    def check_conditions(self):
+        for condition in self._conditions:
+            # if obs_lab/obs_ch outside obs_range:
+            # send target_lab/target_ch the target_val
+            lab            = condition['obs_lab']
+            observ_channel = condition['obs_ch']
+            range_boundary = condition['obs_range']
+            target_lab     = condition['target_lab']
+            target_channel = condition['target_ch']
+            target_value   = condition['target_val']
+            node_id = self.comms_handler.get_nodeID_by_user(lab)
+            if len(node_id)>0:
+                current_observed_val = self.comms_handler.last_data[node_id[0]][observ_channel]
+                if range_boundary[0]<= current_observed_val <= range_boundary[1]:
+                    target_id = self.comms_handler.get_nodeID_by_user(target_lab)
+                    msg = target_lab+','+str(target_channel)+','+str(target_value)
+                    broadcast(self.comms_handler.nodes,msg)
+
+            else:
+                pass
+
+
+
 
 class NodeHandler(tornado.websocket.WebSocketHandler):
     """ Class that handles the communication via websockets with the slave nodes.
     """
 
-    node_list = []
+    node_dict = {}
 
     def initialize(self, comms_handler,verbose=True):
         """Initialisation of an object of the NodeHandler class.
@@ -298,19 +336,18 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
         # We could do here the configuration of the node, like a dictionary with the channels exposed
 
         #self.write_message('Init')
-
-        NodeHandler.node_list.append(self)
         self.id = uuid.uuid4().hex
+        NodeHandler.node_dict[self.id] = self
         ip = self.request.remote_ip
-        print('(NDH  {}) New NODE {} ({}). (out of {}) '\
+        print('(NDH  {}) New NODE {} ({}). (out of {}) ' \
               .format(time.strftime(TFORMAT),
                       socket.getfqdn(ip),
                       ip,
-                      len(NodeHandler.node_list)))
+                      len(NodeHandler.node_dict)))
         print('(NDH) UUID: {}'.format(self.id))
 
     def on_message(self, message):
-        """ Callback executed upon message reception from the node.
+        """ Callback executed upon message reception from the master server.
 
         The message is a JSON string, which is converted to a dictionary.
 
@@ -364,7 +401,7 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
         # Remove nodehandler from the comms_handler instance and the class'
         # node_list.
         self.__comms_handler.remove_key(self.id)
-        NodeHandler.node_list.remove(self)
+        NodeHandler.node_dict.pop(self.id, None)
         ip = self.request.remote_ip
         user = self.user
         print('(NDH  {}) Connection with {} ({}) closed '\
@@ -384,7 +421,7 @@ class NodeHandler(tornado.websocket.WebSocketHandler):
         """
         #In case we want to exit, we send a KeyboardInterrupt
         try:
-            broadcast(cls.node_list,msg)
+            broadcast(cls.node_dict, msg)
         except KeyboardInterrupt:
             raise
 
@@ -437,7 +474,7 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
                   .format(time.strftime(TFORMAT),
                           message))
         for node in self.__comms_handler.nodes:
-            node.write_message(message)
+            self.__comms_handler.nodes[node].write_message(message)
 
 
     def on_close(self):
@@ -449,6 +486,11 @@ class ClientHandler(tornado.websocket.WebSocketHandler):
     def check_origin(self, origin):
         #TODO: should actually check the origin
         return True
+
+    @classmethod
+    def broadcast(cls, msg):
+        for client in cls.client_list:
+            client.write_message(msg)
 
 
 class StatusHandler(tornado.web.RequestHandler):
@@ -467,20 +509,24 @@ class StatusHandler(tornado.web.RequestHandler):
         self.__comms_handler = comms_handler
 
     def get(self):
+        # Time
         fetch_time = time.strftime(TFORMAT)
-        num_nodes = len(self.__comms_handler.nodes)
-        num_clients = len(self.__comms_handler.clients)
         self.write('<meta http-equiv="refresh" content="10">')
         self.write(' <style> .wrapper {display:flex}</style>')
         self.write('<p> TIME: {}</p>'.format(fetch_time))
+        # Nodes
+        num_nodes = len(self.__comms_handler.nodes)
         self.write("<h3>Number of connected nodes: {}</h3><ul>".format(num_nodes))
-        for node in self.__comms_handler.nodes:
+        for node_key in self.__comms_handler.nodes:
+            node = self.__comms_handler.nodes[node_key]
             if 'user' in node.__dict__:
                 user = node.user
             else:
                 user ='no ID'
             self.write('<li>{} ({})</li>'.format(socket.getfqdn(node.request.remote_ip),
                                                  user))
+        # Clients
+        num_clients = len(self.__comms_handler.clients)
         self.write("</ul><h3>Number of connected clients: {}</h3><ul style>".format(num_clients))
         for client in self.__comms_handler.clients:
             self.write('<li>{}</li>'.format(socket.getfqdn(client.request.remote_ip)))
@@ -514,7 +560,7 @@ class CommsHandler(object):
     value changes.
     """
     def __init__(self):
-        self.nodes = NodeHandler.node_list       #list
+        self.nodes = NodeHandler.node_dict       #list
         self.clients = ClientHandler.client_list #list
         #Data dictionary
         self.last_data = {}                #dictionary
@@ -522,7 +568,6 @@ class CommsHandler(object):
         self.metadata = {}                 #dictionary
         self._last_metadata_id = []
         self._metadata_observers= []
-
 
     def get_last_metadata_id(self):
         return self._last_metadata_id
@@ -551,21 +596,44 @@ class CommsHandler(object):
         self.last_metadata_id = id # This triggers the callback
 
     def remove_key(self,id):
+        """
+        Removes the node with a given id from the comms_handler.
+
+        We need to make sure that both the last_data and the metadata
+        entries are removed
+
+        :param id: the UUID given by the MasterServer to the node
+        :type id: str
+        :return:
+        """
         self.last_data.pop(id,None)
         self.metadata.pop(id,None)
 
+    def get_nodeID_by_user(self,user):
+        """ Returns the node.id of the node with a given user name
+
+        Since the user is first obtained after getting data, we infer
+        it from the information in the self.last_data dictionary.
+
+        :param user: The laboratory name
+        :type user: str
+        :return: Returns the UUID given by the master server to the node
+        with a given username
+        """
+        return [key for key in self.last_data if self.last_data[key]['user'] == user]
+
 ########################################
 
-def broadcast(list_of_endpoints, msg):
+def broadcast(dictionary_of_endpoints, msg):
     """ Broadcasts a message to a list of endpoints using the "write_message"
     method.
 
-    :param list_of_endpoints:
+    :param dictionary_of_endpoints:
     :param msg:
     :return:
     """
-    for endpoint in list_of_endpoints:
-        endpoint.write_message(msg)
+    for endpoint in dictionary_of_endpoints:
+        dictionary_of_endpoints[endpoint].write_message(msg)
 
 
 
