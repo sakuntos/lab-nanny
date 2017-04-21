@@ -308,13 +308,13 @@ class SlaveNode(object):
                 except (SerialException, ArduinoConnectionError):
                     # If the connection is not accessible, send a "standard" dictionary, with the 'error' flag
                     self.send_message_on_serial_exception()
-                    print('(node {}) Serial Exception '.format(time.time()))
+                    print('(node {}) Serial Exception '.format(time.strftime(TFORMAT)))
                     if self.is_arduino_connected:
                         self.is_arduino_connected = False
                         self.arduino_COMS.cleanup()
                         self.reconnect_to_arduino()
                 except ValueError as err:
-                    print('(node {}) ValueError thrown')
+                    print('(node {}) ValueError thrown'.format(time.strftime(TFORMAT)))
                     print(err.args)
 
                 except RuntimeError as err:
