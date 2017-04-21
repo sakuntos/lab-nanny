@@ -7,20 +7,25 @@ The system consists on one or more [arduinos](https://www.arduino.cc/), each of 
 ![System diagram](./resources/architecture_diagram.png "System diagram")
 
 ## Nodes
-Each of the nodes consists of a bunch of channels connected to the arduino, plus a *slave* computer which communicates with both the arduino and the *master* server.
+Each of the nodes consists of a bunch of sensors connected to the arduino, plus a *slave* computer which communicates with both the arduino and the *master* server.
 
 Since the slave nodes are directly connected to the arduinos, they show a much lower latency to their stimuli; one may use this to implement low-latency responses to contingencies. For example, if a TTL pulse signals that a potentially harmful condition is met, one might stop an experiment.
 
 ### arduino
 The arduinos have both input and output ports, with which we can sense and act on the experiment respectively.
 
-They communicate with the PCs connected to them via the serial port using a handshake. The handshake can either mean to just “send the sensor data” or to “perform an action and then send the sensor data”. Initially, this handshake just turns ON/OFF a particular digital port.
+They communicate with the PCs connected to them via the serial connection. The node starts the communication with a handshake that arduino must send back to check that the connection works. The handshake, a single char, can either mean to just “send the sensor data” (if char value is 14) or to “perform an action and then send the sensor data” (if char values between 15 and 114). The value of this handshake just turns ON/OFF a particular digital port: chars in the region 65-114 correspond to turning ON channels 0-49, and chars with values 64-15 correspond to their respective OFF values (char 64 corresponds to channel 0 OFF, and char 15 corresponds to channel 49 OFF).
 
-### Slave nodes (servers.server_node)
-It is in charge of polling the arduino, asking for data, and sending the data back to the master server. It offers the possibility of both I/O to arduino from server requests.
+
+### Slave node (servers.server_node)
+The slave node is charge of interfacing the arduino and the master server. It can asking arduino for data and change its digital channels (using the above mentioned handshake). It offers the possibility of both I/O to arduino from server requests.
 
 ## Master server (servers.server_master)
-Periodically obtains data from all of the nodes. It stores this data (with low frequency) using a sqlite database.
+Periodically obtains data from all of the nodes. At the same time, the server currently implements a very rudimentary feedback system controlled by one or more "conditions". These are stored in the servers.server_master._conditions property, and checked with the same period as the nodes data is obtained.
+
+The server stores some data to a sqlite database: it periodically stores a snapshot of the data (with smaller frequency than it obtains data from the nodes) and metadata corresponding to new connections, re-connections and closing connections.
+
+Through the 'SOCKETPORT/status' link, the master server also makes available a summary if its state.
 
 ## Clients
 Coded in HTML + JS. Connect to the master-server, which then sends the data to all connected clients every time the slave nodes sends data back.
