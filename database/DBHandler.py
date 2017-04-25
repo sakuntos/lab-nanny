@@ -10,6 +10,55 @@ METADATA_TABLE_COLTYPES = ['REAL','INTEGER','TEXT']
 
 
 class DBHandler(object):
+    """ Handler of the database operations of lab-nanny.
+
+    This handler is in charge of opening/creating a database,
+    registering new nodes and metadata, and adding database entries on
+    each db_tick in the servers.server_master.
+
+    This handler will create (if it does not exist) an sqlite database
+    with at least 3 tables:
+    - Laboratories table ('laboratories')
+    - Observations table ('observation_list')
+    - Metadata table     ('metadata_list')
+
+    Laboratories table:
+    -------------------
+    Keeps a record of the connected laboratories's names, and associates
+    them with an id
+
+    Observations table:
+    -------------------
+    Each observation corresponds to the dictionary in one lab at the moment
+    of saving the data.
+    For example, if two nodes are connected, every time a db_tick is called
+    in the master server, two observations will be added to the observations
+    table, with incremental _id number, and each of them associated with a
+    different laboratory id.
+
+    Metadata table
+    --------------
+    If the dictionary sent by the node has a 'meta' key, the contents of the
+    dictionary will be stored in this table as a string, using the JSON
+    format. Each of these metadata entries have associated a laboratory
+    id and a timestamp.
+
+
+    To register a new node, the DBHandler creates a new table with the name
+    of the node (e.g. 'lab7'), and an entry in the laboratories table.
+    The name of the columns in the table are set to the names of the keys
+    in the dictionary sent the first time the laboratory is registered.
+
+    If the node is registered, the DBHandler.add_data_from_dict method will
+    add data into the table from the given dictionary.
+
+        NOTE: If the dictionaries used in the creation of the database and the
+    addition of new data have a different set of keys, problems might occur!
+
+
+
+
+    """
     def __init__(self, db_name='example.db',verbose=False):
         self.db = sqlite3.connect(db_name)
         self.cursor = self.db.cursor()
@@ -19,7 +68,9 @@ class DBHandler(object):
 
         self.verbose=verbose
 
-        #If these table names exist, nothing will happen
+        # Make sure that the three main tables (laboratories,
+        # observations and metadata) are in the database.
+        # If these table names exist, nothing will happen.
         self._create_table(self.labs_tablename,
                            column_names=LAB_TABLE_COLNAMES,
                            column_types=LAB_TABLE_COLTYPES)
@@ -145,8 +196,20 @@ class DBHandler(object):
         of keys of the dictionary, and sets every key name into a different
         column.
 
+        The dictionary must contain keys named 'user' and 'error'. This requirement
+        arises from the use of the function "types_from_keys", which sets the type
+        of the different columns in the table.
+
+        The 'user' name should be a valid SQLITE table name. For some reason,
+        names starting with a number (e.g. 606laser) might raise an exception.
+
+        Once everything else is taken care of, it calls the DBHandler._create_table
+        method to actually create a table.
+
         """
         tablename = dictionary["user"]   #see servers.server_node.convert_data()
+        assert 'user' in dictionary, 'The dictionary should contain a "user" key'
+        assert 'error' in dictionary, 'The dictionary should contain a "error" key'
         list_of_keys = list(dictionary)
         list_of_types = types_from_keys(list_of_keys)
         list_of_keys.append('ID')
@@ -157,6 +220,8 @@ class DBHandler(object):
 
     def add_data_from_dict(self, data_dict,observationID=0):
         """ Adds data from a dictionary to a table.
+
+        The dictionary should, at least, have the key 'user' in it.
 
         We assume that the table already has columns named in the same way as
         the keys.
@@ -186,6 +251,15 @@ class DBHandler(object):
         self.commit()
 
     def add_database_entry(self, dictionary):
+        """ Method that adds a database entry corresponding to an
+        observation.
+
+        The dictionary should at least have a key named 'user'
+
+        :param dictionary:
+        :return:
+        """
+
         # 1 - Check if lab has a corresponding table?  pass : add table
         # 2 - Add entry to observation list
         # 3 - Obtain observation_id from entry
@@ -218,6 +292,17 @@ class DBHandler(object):
         self.add_data_from_dict(dictionary,observationID)
 
     def register_new_metadata(self, user, dictionary):
+        """ Creates a new entry in the metadata table.
+
+        The columns to be filled in are the time, the lab_id and a
+        string with the JSON representation of the metadata dictionary.
+
+        :param user: identification of the node
+        :param dictionary: dictionary with some metadata. It can specify,
+        for example, that the key 'ch1' corresponds to 'power of blue laser'
+
+        :return:
+        """
         # 1: Check if table exists
         if not self.check_table_exists(user):
             # Creates new table with suitable properties
@@ -249,6 +334,16 @@ class DBHandler(object):
         self.db.close()
 
 def types_from_keys(list_of_keys):
+    """ Generates a list of data types from a list of keys from a dictionary.
+
+    When we save the data to the different tables in the database, the values
+    of most entries will be of type REAL, except those correponding to the 'user'
+    (the name of the node) and 'error' (error status), which have types 'TEXT'
+    and 'INTEGER' respectively.
+
+    :param list_of_keys:
+    :return:
+    """
     type_list = len(list_of_keys)*['REAL']
     #Not all of the results are REAL: Replace 'user' and 'error' types
     position_of_user  = list_of_keys.index('user')
