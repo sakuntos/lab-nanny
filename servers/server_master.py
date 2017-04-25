@@ -68,12 +68,23 @@ CONNCLOSEDSTR = 'Connection closed'
 
 
 
-condition_trap = {'obs_lab':'lab7',
+condition_trap = {'name':'Trap unlock',
+                  'obs_lab':'lab7',
                   'obs_ch':'ch4',
-                  'obs_range':(1,1.3),
+                  'obs_range':(1,1.5),
                   'target_lab':'lab7',
                   'target_ch':13,
-                  'target_val':1}
+                  'target_val':1,
+                  'message':'Trap unlocked'}
+
+condition_temp = {'name':'Temperature changes',
+                  'obs_lab':'lab7',
+                  'obs_ch':'ch2',
+                  'obs_range':(19,23),
+                  'target_lab':'lab7',
+                  'target_ch':13,
+                  'target_val':1,
+                  'message':'Temperature outside of bounds'}
 
 
 class MasterServer(object):
@@ -118,6 +129,7 @@ class MasterServer(object):
         self.db_handler = DBHandler(db_name=DEFAULTDBNAME)
         # Init program
         self._conditions.append(condition_trap)
+        self._conditions.append(condition_temp)
 
 
 
@@ -290,11 +302,13 @@ class MasterServer(object):
             node_id = self.comms_handler.get_nodeID_by_user(lab)
             if len(node_id)>0:
                 current_observed_val = self.comms_handler.last_data[node_id[0]][observ_channel]
-                if range_boundary[0]<= current_observed_val <= range_boundary[1]:
+                if not range_boundary[0]<= current_observed_val <= range_boundary[1]:
+                    # Add here entry to database when condition is not met
                     target_id = self.comms_handler.get_nodeID_by_user(target_lab)
                     msg = target_lab+','+str(target_channel)+','+str(target_value)
                     broadcast(self.comms_handler.nodes,msg)
-
+                    print(condition['message'])
+                    print('{} <= {} <= {}'.format(range_boundary[0],current_observed_val,range_boundary[1]))
             else:
                 pass
 
