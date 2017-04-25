@@ -67,6 +67,9 @@ MESSAGE_PINVALUE_0 = 65
 # Time format
 TFORMAT = '%y/%m/%d %H:%M:%S'
 
+# Should contain the keys 'user' and 'error', and probably 'x'
+# (see the SlaveNode.convert_data, as the keys in the dictionary should be identical,
+# bar the METAKEYWORD)
 DICT_CONTENTS = {
             'ch0' :'temp sensor',
             'ch1' : 'more stuff',
@@ -75,7 +78,9 @@ DICT_CONTENTS = {
             'ch4' : 'empty',
             'ch5' : 'empty',
             'ch6' : 'empty',
-            METAKEYWORD : True
+            METAKEYWORD : True,
+            'error':False,
+            'x':'local time'
         }
 
 class SlaveNode(object):
@@ -416,7 +421,7 @@ if __name__ == "__main__":
     if args.emulate:
         from servers.arduino_emulator import ArduinoSerialEmulator
 
-
+    ### SET-UP A SLAVENODE INSTANCE
     try:
         slaveNodeInstance = SlaveNode(emulate=args.emulate,
                                       masterWSlocation=args.websocket,
@@ -426,6 +431,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print('(node {}) Exiting gracefully'.format(time.strftime(TFORMAT)))
 
+    ### EXECUTE THE KEEPALIVE_WS
     while True:
         try:
 

@@ -247,8 +247,10 @@ class MasterServer(object):
         """ Function called periodically to save data to the database
 
         This function generates an entry in the database for each node ID
-        held in the CommsHandler.last_data instance. The entry in the
-        database is composed of a timestamp, a username, and the JSON string.
+        held in the CommsHandler.last_data instance.
+
+        The details of writing to the database are found in the
+        database.DBHandler module.
         """
         # Write values to db (called every N seconds, probably 30-60)
         # if self.verbose:
@@ -606,6 +608,7 @@ class CommsHandler(object):
         self._metadata_observers.append(callback)
 
     def add_metadata(self, id, contents):
+        print(contents)
         self.metadata[id] = contents
         self.last_metadata_id = id # This triggers the callback
 
